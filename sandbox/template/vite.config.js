@@ -1,12 +1,21 @@
 import { defineConfig } from 'vite'
-import preact from '@preact/preset-vite'
+import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [preact()],
-  server:{
-    host:"0.0.0.0",
-    port:5173,
-    allowedHosts:true
-  }
+  plugins: [ react() ],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    allowedHosts: true,
+    hmr: {
+      clientPort: 80,
+      protocol: 'ws',
+    },
+    watch: {
+      usePolling: true,
+      interval: 300,
+      ignored: [ 'node_modules' ]
+    }
+  },
 })
