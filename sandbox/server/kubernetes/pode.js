@@ -15,7 +15,7 @@ export async function createPode(sandboxId) {
       containers: [
         {
           image: "template",
-          imagePullPolicy: "IfNotPresent",
+          imagePullPolicy: "Always",
           name: "sandbox-container",
           ports: [
             {

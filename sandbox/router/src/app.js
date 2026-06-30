@@ -7,6 +7,47 @@ const app = express();
 app.use(morgan("dev"));
 
 /**
+ * Cache of proxy instances keyed by sandboxId.
+ * createProxyMiddleware must be initialized once per target,
+ * not called as a factory on every request (causes 504 timeouts).
+ */
+const proxyCache = new Map();
+
+function getProxy(sandboxId) {
+  if (proxyCache.has(sandboxId)) {
+    return proxyCache.get(sandboxId);
+  }
+
+  const target = `http://sandbox-svc-${sandboxId}`;
+
+  const proxy = createProxyMiddleware({
+    target,
+    changeOrigin: true,
+    ws: true,
+
+    on: {
+      error(err, req, res) {
+        console.error(`Proxy Error [${sandboxId}]:`, err.message);
+
+        // Remove from cache so the next request gets a fresh proxy
+        // instead of reusing this broken connection pool forever
+        proxyCache.delete(sandboxId);
+
+        if (!res.headersSent) {
+          res.status(502).json({
+            success: false,
+            message: "Sandbox service unavailable",
+          });
+        }
+      },
+    },
+  });
+
+  proxyCache.set(sandboxId, proxy);
+  return proxy;
+}
+
+/**
  * Health Check
  */
 app.get("/api/status/healthz", (req, res) => {
@@ -54,27 +95,9 @@ app.use((req, res, next) => {
     });
   }
 
-  const target = `http://sandbox-svc-${sandboxId}`;
+  console.log(`Proxying ${host} -> http://sandbox-svc-${sandboxId}`);
 
-  console.log(`Proxying ${host} -> ${target}`);
-
-  return createProxyMiddleware({
-    target,
-    changeOrigin: true,
-    ws: true,
-    logLevel: "debug",
-
-    onError(err, req, res) {
-      console.error("Proxy Error:", err.message);
-
-      if (!res.headersSent) {
-        res.status(502).json({
-          success: false,
-          message: "Sandbox service unavailable",
-        });
-      }
-    },
-  })(req, res, next);
+  return getProxy(sandboxId)(req, res, next);
 });
 
 export default app;
