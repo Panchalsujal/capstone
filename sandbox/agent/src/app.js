@@ -12,7 +12,7 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("list-files", async (req, res) => {
+app.get("/list-files", async (req, res) => {
   const elements = await fs.promises.readdir(WORKING_DIR);
 
   res.status(200).json({

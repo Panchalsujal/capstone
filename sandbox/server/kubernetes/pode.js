@@ -12,6 +12,26 @@ export async function createPode(sandboxId) {
       },
     },
     spec: {
+      volumes: [
+        {
+          name: "workspace-volume",
+          emptyDir: {},
+        },
+      ],
+      initContainers:[
+        {
+          name:"init-containers",
+          image:"template",
+          imagePullPolicy:"Always",
+          command:["sh","-c","cp -r /workspace/.  /seed/"],
+          volumesMounts:[
+            {
+              name:"workspace-volume",
+              mountPath:"/seed"
+            }
+          ]
+        }
+      ],
       containers: [
         {
           image: "template",
@@ -27,6 +47,28 @@ export async function createPode(sandboxId) {
             limits: { cpu: "500m", memory: "1Gi" },
             requests: { cpu: "250m", memory: "500Mi" },
           },
+          volumesMounts: [
+            {
+              name: "workspace-volume",
+              mountPath: "/workspace",
+            },
+          ],
+        },
+        {
+          image: "agent",
+          imagePullPolicy: "IfNotPresent",
+          name: "agent-container",
+          ports: [{ containerPort: 3000, name: "http" }],
+          resources: {
+            limits: { cpu: "500m", memory: "1Gi" },
+            requests: { cpu: "250m", memory: "500Mi" },
+          },
+          volumesMounts: [
+            {
+              name: "workspace-volume",
+              mountPath: "/workspace",
+            },
+          ],
         },
       ],
     },

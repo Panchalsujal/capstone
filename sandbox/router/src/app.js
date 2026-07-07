@@ -7,18 +7,53 @@ const app = express();
 app.use(morgan("dev"));
 
 /**
- * Cache of proxy instances keyed by sandboxId.
- * createProxyMiddleware must be initialized once per target,
- * not called as a factory on every request (causes 504 timeouts).
+ * -------------------------
+ * Health Check
+ * -------------------------
+ */
+app.get("/api/status/healthz", (req, res) => {
+  res.json({
+    status: "ok",
+  });
+});
+
+/**
+ * -------------------------
+ * Readiness Check
+ * -------------------------
+ */
+app.get("/api/status/readyz", (req, res) => {
+  res.json({
+    status: "ready",
+  });
+});
+
+/**
+ * -----------------------------------
+ * Proxy Cache
+ * -----------------------------------
+ *
+ * Key Example:
+ * abc-default
+ * abc-3000
  */
 const proxyCache = new Map();
 
-function getProxy(sandboxId) {
-  if (proxyCache.has(sandboxId)) {
-    return proxyCache.get(sandboxId);
+/**
+ * Returns cached proxy instance.
+ */
+function getProxy(sandboxId, port = null) {
+  const cacheKey = `${sandboxId}-${port || "default"}`;
+
+  if (proxyCache.has(cacheKey)) {
+    return proxyCache.get(cacheKey);
   }
 
-  const target = `http://sandbox-svc-${sandboxId}`;
+  const target = port
+    ? `http://sandbox-svc-${sandboxId}:${port}`
+    : `http://sandbox-svc-${sandboxId}`;
+
+  console.log(`Creating Proxy -> ${target}`);
 
   const proxy = createProxyMiddleware({
     target,
@@ -26,51 +61,50 @@ function getProxy(sandboxId) {
     ws: true,
 
     on: {
-      error(err, req, res) {
-        console.error(`Proxy Error [${sandboxId}]:`, err.message);
+      proxyReq(proxyReq, req) {
+        console.log(
+          `[${req.method}] ${req.headers.host}${req.originalUrl} -> ${target}`
+        );
+      },
 
-        // Remove from cache so the next request gets a fresh proxy
-        // instead of reusing this broken connection pool forever
-        proxyCache.delete(sandboxId);
+      error(err, req, res) {
+        console.error(`Proxy Error (${cacheKey})`, err.message);
+
+        proxyCache.delete(cacheKey);
 
         if (!res.headersSent) {
           res.status(502).json({
             success: false,
-            message: "Sandbox service unavailable",
+            message: "Sandbox unavailable",
           });
         }
       },
     },
   });
 
-  proxyCache.set(sandboxId, proxy);
+  proxyCache.set(cacheKey, proxy);
+
   return proxy;
 }
 
 /**
- * Health Check
- */
-app.get("/api/status/healthz", (req, res) => {
-  return res.status(200).json({
-    status: "ok",
-  });
-});
-
-/**
- * Readiness Check
- */
-app.get("/api/status/readyz", (req, res) => {
-  return res.status(200).json({
-    status: "ready",
-  });
-});
-
-/**
+ * -----------------------------------
  * Dynamic Sandbox Router
- * Example:
- *   abc123.preview.localhost
- *   -> sandbox-svc-abc123
+ * -----------------------------------
+ *
+ * abc.preview.localhost
+ *        │
+ *        ▼
+ * sandbox-svc-abc
+ *
+ *
+ * abc.agent.localhost
+ *        │
+ *        ▼
+ * sandbox-svc-abc:3000
+ *
  */
+
 app.use((req, res, next) => {
   const host = req.headers.host;
 
@@ -81,23 +115,42 @@ app.use((req, res, next) => {
     });
   }
 
-  const sandboxId = host.split(".")[0];
+  // Remove :80 / :3000 if present
+  const hostname = host.split(":")[0];
 
-  // Ignore requests that are not sandbox subdomains
-  if (
-    sandboxId === "localhost" ||
-    sandboxId === "preview" ||
-    sandboxId === "www"
-  ) {
+  const parts = hostname.split(".");
+
+  if (parts.length < 3) {
     return res.status(404).json({
       success: false,
-      message: "Invalid sandbox host",
+      message: "Invalid hostname",
     });
   }
 
-  console.log(`Proxying ${host} -> http://sandbox-svc-${sandboxId}`);
+  const sandboxId = parts[0];
+  const service = parts[1];
 
-  return getProxy(sandboxId)(req, res, next);
+  switch (service) {
+    case "preview":
+      console.log(
+        `Preview Request : ${hostname} -> sandbox-svc-${sandboxId}`
+      );
+
+      return getProxy(sandboxId)(req, res, next);
+
+    case "agent":
+      console.log(
+        `Agent Request : ${hostname} -> sandbox-svc-${sandboxId}:3000`
+      );
+
+      return getProxy(sandboxId, 3000)(req, res, next);
+
+    default:
+      return res.status(404).json({
+        success: false,
+        message: "Unknown service",
+      });
+  }
 });
 
 export default app;
