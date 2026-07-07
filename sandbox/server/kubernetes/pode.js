@@ -18,52 +18,78 @@ export async function createPode(sandboxId) {
           emptyDir: {},
         },
       ],
-      initContainers:[
+
+      initContainers: [
         {
-          name:"init-containers",
-          image:"template",
-          imagePullPolicy:"Always",
-          command:["sh","-c","cp -r /workspace/.  /seed/"],
-          volumesMounts:[
-            {
-              name:"workspace-volume",
-              mountPath:"/seed"
-            }
-          ]
-        }
-      ],
-      containers: [
-        {
+          name: "init-container",
           image: "template",
           imagePullPolicy: "Always",
+          command: ["sh", "-c", "cp -r /workspace/. /seed/"],
+          volumeMounts: [
+            {
+              name: "workspace-volume",
+              mountPath: "/seed",
+            },
+          ],
+        },
+      ],
+
+      containers: [
+        {
           name: "sandbox-container",
+          image: "template",
+          imagePullPolicy: "Always",
+
           ports: [
             {
               containerPort: 5173,
               name: "http",
             },
           ],
+
           resources: {
-            limits: { cpu: "500m", memory: "1Gi" },
-            requests: { cpu: "250m", memory: "500Mi" },
+            requests: {
+              cpu: "250m",
+              memory: "500Mi",
+            },
+            limits: {
+              cpu: "500m",
+              memory: "1Gi",
+            },
           },
-          volumesMounts: [
+
+          volumeMounts: [
             {
               name: "workspace-volume",
               mountPath: "/workspace",
             },
           ],
         },
+
         {
+          name: "agent-container",
           image: "agent",
           imagePullPolicy: "IfNotPresent",
-          name: "agent-container",
-          ports: [{ containerPort: 3000, name: "http" }],
+
+          ports: [
+            {
+              containerPort: 3000,
+              name: "http",
+            },
+          ],
+
           resources: {
-            limits: { cpu: "500m", memory: "1Gi" },
-            requests: { cpu: "250m", memory: "500Mi" },
+            requests: {
+              cpu: "250m",
+              memory: "500Mi",
+            },
+            limits: {
+              cpu: "500m",
+              memory: "1Gi",
+            },
           },
-          volumesMounts: [
+
+          volumeMounts: [
             {
               name: "workspace-volume",
               mountPath: "/workspace",
