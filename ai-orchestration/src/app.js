@@ -7,6 +7,9 @@ app.use(express.json());
 app.use(morgan("dev"));
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/api/status/healthz", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 app.get("/api/ai/healthz", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
