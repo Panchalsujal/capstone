@@ -8,7 +8,7 @@ import * as z from "zod";
 export const listfiles = tool(
   async () => {
     const response = await axios.get(
-      "http://019f4654-48b9-75dc-9896-c218809e7552.agent.localhost/list-files",
+      "http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/list-files",
     );
     console.log("==================================");
     console.log("Using list files tool", response.data.files);
@@ -33,7 +33,7 @@ export const readfile = tool(
     console.log("==================================");
 
     const response = await axios.get(
-      `http://019f4654-48b9-75dc-9896-c218809e7552.agent.localhost/read-files?files=${encodeURIComponent(
+      `http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/read-files?files=${encodeURIComponent(
         files.join(","),
       )}`,
     );
@@ -65,7 +65,7 @@ export const updateFiles = tool(
     console.log("==================================");
 
     const response = await axios.patch(
-      "http://019f4654-48b9-75dc-9896-c218809e7552.agent.localhost/update-files",
+      "http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/update-files",
       {
         updates: files,
       },

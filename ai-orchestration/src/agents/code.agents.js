@@ -14,6 +14,9 @@ const agent = createAgent({
   tools: [listfiles, readfile, updateFiles],
 });
 
+
+
+
 agent.invoke({
   messages: [
     {
@@ -22,3 +25,6 @@ agent.invoke({
     },
   ],
 });
+
+
+export default agent;
