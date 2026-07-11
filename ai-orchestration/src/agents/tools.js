@@ -2,135 +2,485 @@ import axios from "axios";
 import { tool } from "langchain";
 import * as z from "zod";
 
+
+const AXIOS_TIMEOUT = 15000;
+
+
 export function createTools(sandboxId) {
-  const base = `http://sandbox-svc-${sandboxId}:3000`;
+
+  if (!sandboxId) {
+    throw new Error("sandboxId required for tools");
+  }
+
+
+  const client = axios.create({
+
+    baseURL:
+      `http://sandbox-svc-${sandboxId}:3000`,
+
+    timeout: AXIOS_TIMEOUT,
+
+  });
+
+
+
+  function logStart(name) {
+
+    console.log("\n======================================");
+    console.log(`[Tool Started] ${name}`);
+
+  }
+
+
+
+  function logEnd(name, start) {
+
+    console.log(
+      `[Tool Finished] ${name} (${Date.now() - start}ms)`
+    );
+
+    console.log("======================================\n");
+
+  }
+
+
+
+  function logError(name, error) {
+
+    console.error("\n======================================");
+
+    console.error(
+      `[Tool Failed] ${name}`
+    );
+
+
+    if(error.response){
+
+      console.error(
+        "Status:",
+        error.response.status
+      );
+
+      console.error(
+        "Data:",
+        error.response.data
+      );
+
+    }
+    else {
+
+      console.error(
+        error.message
+      );
+
+    }
+
+
+    console.error("======================================\n");
+
+  }
+
+
 
   /**
-   * List Files
+   * LIST FILES
    */
-  const listfiles = tool(
-    async () => {
-      console.log("\n==============================");
-      console.log("[Agent] -> list_files");
-      console.log("GET", `${base}/list-files`);
+  const listFiles = tool(
 
-      const response = await axios.get(`${base}/list-files`);
+    async()=>{
 
-      console.log("[Sandbox] <- list_files response");
-      console.log(response.data);
-      console.log("==============================\n");
+      const start = Date.now();
 
-      return JSON.stringify(response.data.files);
+
+      try{
+
+        logStart("list_files");
+
+
+        const response =
+          await client.get(
+            "/list-files"
+          );
+
+
+        const files =
+          response.data.files ?? [];
+
+
+        console.log(
+          "Files count:",
+          files.length
+        );
+
+
+        logEnd(
+          "list_files",
+          start
+        );
+
+
+        return JSON.stringify(files);
+
+
+      }
+      catch(error){
+
+        logError(
+          "list_files",
+          error
+        );
+
+
+        return JSON.stringify({
+          error:
+            "Unable to list files"
+        });
+
+      }
+
     },
+
+
     {
-      name: "list_files",
-      description: "List all project files.",
+
+      name:"list_files",
+
+      description:
+        "List all files inside the project. Must be called before modifying code."
+
     }
+
   );
 
+
+
+
+
   /**
-   * Read Files
+   * READ FILES
    */
-  const readfile = tool(
-    async ({ files }) => {
-      console.log("\n==============================");
-      console.log("[Agent] -> read_file");
-      console.log("Files:", files);
+  const readFiles = tool(
 
-      const query = encodeURIComponent(files.join(","));
+    async({files})=>{
 
-      console.log("GET", `${base}/read-files?files=${query}`);
 
-      const response = await axios.get(`${base}/read-files?files=${query}`);
+      const start = Date.now();
 
-      console.log("[Sandbox] <- read_file response");
-      console.log(response.data);
-      console.log("==============================\n");
 
-      return JSON.stringify(response.data.files);
+      try{
+
+
+        logStart(
+          "read_files"
+        );
+
+
+        if(!files || files.length===0){
+
+          return JSON.stringify([]);
+
+        }
+
+
+
+        // safety limit
+        const selectedFiles =
+          files.slice(0,10);
+
+
+
+        console.log(
+          "Reading:",
+          selectedFiles
+        );
+
+
+
+        const response =
+          await client.get(
+            `/read-files?files=${encodeURIComponent(
+              selectedFiles.join(",")
+            )}`
+          );
+
+
+
+        logEnd(
+          "read_files",
+          start
+        );
+
+
+        return JSON.stringify(
+          response.data.files ?? []
+        );
+
+
+      }
+      catch(error){
+
+
+        logError(
+          "read_files",
+          error
+        );
+
+
+        return JSON.stringify({
+          error:
+            "Unable to read files"
+        });
+
+
+      }
+
+
     },
+
+
     {
-      name: "read_file",
-      description: "Read one or more files.",
-      schema: z.object({
-        files: z.array(z.string()),
-      }),
+
+
+      name:"read_files",
+
+
+      description:
+        "Read existing files before updating them.",
+
+
+      schema:z.object({
+
+        files:z.array(
+          z.string()
+        )
+
+      })
+
+
     }
+
+
   );
 
+
+
+
+
+
   /**
-   * Create Files
+   * CREATE FILES
    */
   const createFiles = tool(
-    async ({ files }) => {
-      console.log("\n==============================");
-      console.log("[Agent] -> create_files");
-      console.log("Files to create:");
-      console.dir(files, { depth: null });
 
-      console.log("POST", `${base}/create-files`);
+    async({files})=>{
 
-      const response = await axios.post(`${base}/create-files`, {
-        files,
-      });
 
-      console.log("[Sandbox] <- create_files response");
-      console.log(response.data);
-      console.log("==============================\n");
+      const start =
+        Date.now();
 
-      return JSON.stringify(response.data);
+
+      try{
+
+
+        logStart(
+          "create_files"
+        );
+
+
+        const response =
+          await client.post(
+            "/create-files",
+            {
+              files
+            }
+          );
+
+
+
+        logEnd(
+          "create_files",
+          start
+        );
+
+
+        return JSON.stringify(
+          response.data.results ?? []
+        );
+
+
+      }
+      catch(error){
+
+
+        logError(
+          "create_files",
+          error
+        );
+
+
+        return JSON.stringify({
+          error:
+            "Create files failed"
+        });
+
+
+      }
+
+
     },
+
+
     {
-      name: "create_files",
+
+      name:
+        "create_files",
+
+
       description:
-        "Create new files only. Do not use this to modify existing files.",
-      schema: z.object({
-        files: z.array(
+        "Create new files only. Never overwrite existing files.",
+
+
+      schema:z.object({
+
+        files:z.array(
+
           z.object({
-            file: z.string().describe("Relative file path."),
-            content: z.string().describe("Initial file content."),
+
+            file:z.string(),
+
+            content:z.string()
+
           })
-        ),
-      }),
+
+        )
+
+      })
+
     }
+
   );
+
+
+
+
+
+
 
   /**
-   * Update Files
+   * UPDATE FILES
    */
   const updateFiles = tool(
-    async ({ files }) => {
-      console.log("\n==============================");
-      console.log("[Agent] -> update_files");
-      console.log("Files to update:");
-      console.dir(files, { depth: null });
 
-      console.log("PATCH", `${base}/update-files`);
+    async({files})=>{
 
-      const response = await axios.patch(`${base}/update-files`, {
-        updates: files,
-      });
 
-      console.log("[Sandbox] <- update_files response");
-      console.log(response.data);
-      console.log("==============================\n");
+      const start =
+        Date.now();
 
-      return JSON.stringify(response.data.results);
+
+      try{
+
+
+        logStart(
+          "update_files"
+        );
+
+
+
+        const response =
+          await client.patch(
+
+            "/update-files",
+
+            {
+              updates:files
+            }
+
+          );
+
+
+
+        logEnd(
+          "update_files",
+          start
+        );
+
+
+        return JSON.stringify(
+          response.data.results ?? []
+        );
+
+
+      }
+      catch(error){
+
+
+        logError(
+          "update_files",
+          error
+        );
+
+
+        return JSON.stringify({
+
+          error:
+            "Update files failed"
+
+        });
+
+
+      }
+
+
     },
+
+
     {
-      name: "update_files",
+
+
+      name:
+        "update_files",
+
+
       description:
-        "Update existing files only. Do not create new files.",
-      schema: z.object({
-        files: z.array(
+        "Update existing files only. Never create new files.",
+
+
+      schema:z.object({
+
+        files:z.array(
+
           z.object({
-            file: z.string().describe("Relative file path."),
-            content: z.string().describe("Updated file content."),
+
+            file:z.string(),
+
+            content:z.string()
+
           })
-        ),
-      }),
+
+        )
+
+      })
+
+
     }
+
+
   );
 
-  return [listfiles, readfile, createFiles, updateFiles];
-} 
+
+
+
+  return [
+
+    listFiles,
+
+    readFiles,
+
+    createFiles,
+
+    updateFiles
+
+  ];
+
+}

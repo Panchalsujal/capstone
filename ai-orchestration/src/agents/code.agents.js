@@ -1,23 +1,135 @@
-import "dotenv/config"; // loads .env from the project root
+import "dotenv/config";
 import { ChatMistralAI } from "@langchain/mistralai";
-import { createReactAgent } from "@langchain/langgraph/prebuilt"; // Fix: correct function & package
-import { createTools } from "./tools.js";
-import {SYSTEM_PROMPT} from "./systemPrompt.js";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
-// Shared model instance (stateless — safe to reuse across requests)
-const model = new ChatMistralAI({
-  model: "mistral-medium-latest",
-  temperature: 0.2,
-  apiKey: process.env.MISTRALAI_API_KEY,
-   
-});
+import { createTools } from "./tools.js";
+import { SYSTEM_PROMPT } from "./systemPrompt.js";
+
+
+const API_KEY = process.env.MISTRALAI_API_KEY;
+
+
+if (!API_KEY) {
+  throw new Error(
+    "MISTRALAI_API_KEY is missing"
+  );
+}
+
+
+const MODEL_NAME =
+  process.env.MISTRAL_MODEL ||
+  "mistral-medium-latest";
+
+
+console.log("======================================");
+console.log("[AI] Loading Model");
+console.log("Model:", MODEL_NAME);
+console.log("======================================");
+
+
+
 /**
- * Returns a LangGraph ReAct agent bound to a specific sandbox.
- * Tools are created per-request so they target the right sandbox URL.
- *
- * @param {string} sandboxId - UUID of the sandbox (from /api/sandbox/start)
+ * Shared LLM instance
  */
-  export function createAgentForSandbox(sandboxId) {
-    const tools = createTools(sandboxId);
-    return createReactAgent({ llm: model, tools,prompt:SYSTEM_PROMPT });
+const model = new ChatMistralAI({
+
+  apiKey: API_KEY,
+
+  model: MODEL_NAME,
+
+  temperature: 0.2,
+
+  maxRetries: 1,
+
+  timeout: 45000,
+
+});
+
+
+
+/**
+ * Create Agent for Sandbox
+ *
+ * @param {string} sandboxId
+ */
+export function createAgentForSandbox(
+  sandboxId
+) {
+
+  if (!sandboxId) {
+
+    throw new Error(
+      "sandboxId is required"
+    );
+
   }
+
+
+  console.log("\n======================================");
+  console.log("[Agent] Initializing");
+  console.log("Sandbox:", sandboxId);
+
+
+
+  const tools =
+    createTools(sandboxId);
+
+
+
+  console.log(
+    "[Agent] Tools:",
+    tools
+      .map(
+        tool => tool.name
+      )
+      .join(", ")
+  );
+
+
+
+  try {
+
+
+    const agent =
+      createReactAgent({
+
+        llm: model,
+
+        tools,
+
+        prompt:
+          SYSTEM_PROMPT,
+
+      });
+
+
+
+    console.log(
+      "[Agent] Ready"
+    );
+
+
+    console.log(
+      "======================================\n"
+    );
+
+
+    return agent;
+
+
+  } catch(error) {
+
+
+    console.error(
+      "[Agent] Creation failed"
+    );
+
+
+    console.error(error);
+
+
+    throw error;
+
+  }
+
+}
