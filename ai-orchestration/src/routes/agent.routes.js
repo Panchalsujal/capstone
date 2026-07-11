@@ -4,20 +4,21 @@ import { createAgentForSandbox } from "../agents/code.agents.js";
 
 const agentRouter = express.Router();
 
-const AGENT_TIMEOUT = 60000; // 60 seconds
-
+const AGENT_TIMEOUT = 60000;
 
 agentRouter.post("/invoke", async (req, res) => {
   const { message, sandboxId } = req.body;
 
-  const requestId = randomUUID();
-
+  // Validate BEFORE opening SSE connection
   if (!message || !sandboxId) {
     return res.status(400).json({
+      success: false,
       error: "message and sandboxId are required",
     });
   }
 
+  const requestId = randomUUID();
+  const startTime = Date.now();
 
   console.log("\n======================================");
   console.log(`[${requestId}] AI REQUEST`);
@@ -25,41 +26,47 @@ agentRouter.post("/invoke", async (req, res) => {
   console.log("Message:", message);
   console.log("======================================");
 
+  // Open SSE connection
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
 
-  const startTime = Date.now();
+  // Flush headers immediately
+  res.flushHeaders?.();
+
+  const writer = (text) => {
+    res.write(
+      `event: token\ndata: ${JSON.stringify({
+        text,
+      })}\n\n`
+    );
+  };
 
   let timeout;
 
   try {
-
-    /**
-     * Create agent timeout protection
-     */
-    const timeoutPromise = new Promise((_, reject) => {
-      timeout = setTimeout(() => {
-        const error = new Error(
-          "Agent execution timeout"
-        );
-
-        error.name = "TimeoutError";
-
-        reject(error);
-
-      }, AGENT_TIMEOUT);
-    });
-
-
     console.log(`[${requestId}] Creating agent`);
 
-    const agent = createAgentForSandbox(
-      sandboxId
-    );
-
+    const agent = createAgentForSandbox(sandboxId);
 
     console.log(`[${requestId}] Agent created`);
 
+    timeout = setTimeout(() => {
+      console.error(`[${requestId}] Agent timeout`);
 
-    const invokePromise = agent.invoke(
+      res.write(
+        `event: error\ndata: ${JSON.stringify({
+          success: false,
+          error: "Agent execution timeout",
+        })}\n\n`
+      );
+
+      res.end();
+    }, AGENT_TIMEOUT);
+
+    const stream = await agent.stream(
       {
         messages: [
           {
@@ -69,170 +76,80 @@ agentRouter.post("/invoke", async (req, res) => {
         ],
       },
       {
+        context: {
+          writer,
+        },
+        streamMode: "values",
         recursionLimit:
-          Number(process.env.RECURSION_LIMIT) || 15,
-
+          Number(process.env.RECURSION_LIMIT) || 100,
         configurable: {
           thread_id: requestId,
         },
       }
     );
 
+    let finalChunk = null;
 
-    console.log(
-      `[${requestId}] Running agent`
-    );
+    console.log(`[${requestId}] Streaming started`);
 
+    for await (const chunk of stream) {
+      finalChunk = chunk;
 
-    const result = await Promise.race([
-      invokePromise,
-      timeoutPromise,
-    ]);
+      console.log("Chunk:", chunk);
 
+      res.write(
+        `event: chunk\ndata: ${JSON.stringify(chunk)}\n\n`
+      );
+    }
 
     clearTimeout(timeout);
 
+    const duration = Date.now() - startTime;
 
-    const duration =
-      Date.now() - startTime;
+    console.log(`[${requestId}] Completed ${duration}ms`);
 
-
-    console.log(
-      `[${requestId}] Completed ${duration}ms`
+    res.write(
+      `event: done\ndata: ${JSON.stringify({
+        success: true,
+        duration,
+        requestId,
+        result: finalChunk,
+      })}\n\n`
     );
 
-
-    if (!result?.messages?.length) {
-
-      return res.status(500).json({
-        error:
-          "Agent returned empty response",
-      });
-
-    }
-
-
-    const lastMessage =
-      result.messages[
-        result.messages.length - 1
-      ];
-
-
-    let responseText = "";
-
-
-    if (
-      typeof lastMessage.content === "string"
-    ) {
-
-      responseText =
-        lastMessage.content;
-
-    } else if (
-      Array.isArray(lastMessage.content)
-    ) {
-
-      responseText =
-        lastMessage.content
-          .map(item =>
-            typeof item === "string"
-              ? item
-              : item.text || ""
-          )
-          .join("");
-
-    } else {
-
-      responseText =
-        JSON.stringify(
-          lastMessage.content
-        );
-
-    }
-
-
-    console.log(
-      `[${requestId}] RESPONSE`
-    );
-
-    console.log(responseText);
-
-
-    return res.status(200).json({
-      success: true,
-      requestId,
-      duration,
-      result: responseText,
-    });
-
-
-  } catch(error) {
-
+    res.end();
+  } catch (error) {
     clearTimeout(timeout);
 
-
-    const duration =
-      Date.now() - startTime;
-
+    const duration = Date.now() - startTime;
 
     console.error("\n======================================");
-    console.error(
-      `[${requestId}] FAILED`
-    );
-
-    console.error(
-      "Duration:",
-      duration,
-      "ms"
-    );
-
+    console.error(`[${requestId}] FAILED`);
+    console.error("Duration:", duration, "ms");
     console.error(error);
+    console.error("======================================\n");
 
-    console.error(
-      "======================================\n"
-    );
+    if (!res.writableEnded) {
+      res.write(
+        `event: error\ndata: ${JSON.stringify({
+          success: false,
+          duration,
+          error: error.message,
+        })}\n\n`
+      );
 
-
-    if(error.name === "TimeoutError") {
-
-      return res.status(504).json({
-        success:false,
-        error:
-          "AI agent timeout. Try a smaller request.",
-        duration,
-      });
-
+      res.end();
     }
-
-
-    return res.status(500).json({
-      success:false,
-      error:
-        error.message ||
-        "Agent invocation failed",
-      duration,
-    });
-
   }
 });
 
-
-
-agentRouter.get(
-  "/healthz",
-  (_, res) => {
-
-    res.status(200).json({
-      status:"ok",
-      service:"ai-orchestration",
-      uptime:
-        process.uptime(),
-      timestamp:
-        new Date().toISOString(),
-    });
-
-  }
-);
-
+agentRouter.get("/healthz", (_, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "ai-orchestration",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
 
 export default agentRouter;

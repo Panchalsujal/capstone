@@ -2,485 +2,241 @@ import axios from "axios";
 import { tool } from "langchain";
 import * as z from "zod";
 
-
 const AXIOS_TIMEOUT = 15000;
 
-
 export function createTools(sandboxId) {
-
   if (!sandboxId) {
     throw new Error("sandboxId required for tools");
   }
 
-
   const client = axios.create({
-
-    baseURL:
-      `http://sandbox-svc-${sandboxId}:3000`,
+    baseURL: `http://sandbox-svc-${sandboxId}:3000`,
 
     timeout: AXIOS_TIMEOUT,
-
   });
 
-
-
   function logStart(name) {
-
     console.log("\n======================================");
     console.log(`[Tool Started] ${name}`);
-
   }
-
-
 
   function logEnd(name, start) {
-
-    console.log(
-      `[Tool Finished] ${name} (${Date.now() - start}ms)`
-    );
+    console.log(`[Tool Finished] ${name} (${Date.now() - start}ms)`);
 
     console.log("======================================\n");
-
   }
-
-
 
   function logError(name, error) {
-
     console.error("\n======================================");
 
-    console.error(
-      `[Tool Failed] ${name}`
-    );
+    console.error(`[Tool Failed] ${name}`);
 
+    if (error.response) {
+      console.error("Status:", error.response.status);
 
-    if(error.response){
-
-      console.error(
-        "Status:",
-        error.response.status
-      );
-
-      console.error(
-        "Data:",
-        error.response.data
-      );
-
+      console.error("Data:", error.response.data);
+    } else {
+      console.error(error.message);
     }
-    else {
-
-      console.error(
-        error.message
-      );
-
-    }
-
 
     console.error("======================================\n");
-
   }
-
-
 
   /**
    * LIST FILES
    */
   const listFiles = tool(
-
-    async()=>{
-
+    async (config) => {
+      const writer = config.context?.writer ?? (() => {});
+      writer("Listing files in project directory...\n");
       const start = Date.now();
 
-
-      try{
-
+      try {
         logStart("list_files");
 
+        const response = await client.get("/list-files");
 
-        const response =
-          await client.get(
-            "/list-files"
-          );
-
-
-        const files =
-          response.data.files ?? [];
-
-
-        console.log(
-          "Files count:",
-          files.length
+        writer(
+          "Files listed successfully." +
+            "Files: " +
+            response.data.files.join(",") +
+            "\n",
         );
 
+        const files = response.data.files ?? [];
 
-        logEnd(
-          "list_files",
-          start
-        );
+        console.log("Files count:", files.length);
 
+        logEnd("list_files", start);
 
         return JSON.stringify(files);
-
-
-      }
-      catch(error){
-
-        logError(
-          "list_files",
-          error
-        );
-
+      } catch (error) {
+        logError("list_files", error);
 
         return JSON.stringify({
-          error:
-            "Unable to list files"
+          error: "Unable to list files",
         });
-
       }
-
     },
 
-
     {
-
-      name:"list_files",
+      name: "list_files",
 
       description:
-        "List all files inside the project. Must be called before modifying code."
-
-    }
-
+        "List all files inside the project. Must be called before modifying code.",
+    },
   );
-
-
-
-
 
   /**
    * READ FILES
    */
   const readFiles = tool(
-
-    async({files})=>{
-
+    async ({ files }, config) => {
+      const writer = config.context?.writer ?? (() => {});
+      writer("Reading files..." + files.join(",") + "\n");
 
       const start = Date.now();
 
+      try {
+        logStart("read_files");
 
-      try{
-
-
-        logStart(
-          "read_files"
-        );
-
-
-        if(!files || files.length===0){
-
+        if (!files || files.length === 0) {
           return JSON.stringify([]);
-
         }
 
-
-
         // safety limit
-        const selectedFiles =
-          files.slice(0,10);
+        const selectedFiles = files.slice(0, 10);
 
+        console.log("Reading:", selectedFiles);
 
-
-        console.log(
-          "Reading:",
-          selectedFiles
+        const response = await client.get(
+          `/read-files?files=${encodeURIComponent(selectedFiles.join(","))}`,
         );
 
+        writer("Files read successfully.\n");
 
+        logEnd("read_files", start);
 
-        const response =
-          await client.get(
-            `/read-files?files=${encodeURIComponent(
-              selectedFiles.join(",")
-            )}`
-          );
-
-
-
-        logEnd(
-          "read_files",
-          start
-        );
-
-
-        return JSON.stringify(
-          response.data.files ?? []
-        );
-
-
-      }
-      catch(error){
-
-
-        logError(
-          "read_files",
-          error
-        );
-
+        return JSON.stringify(response.data.files ?? []);
+      } catch (error) {
+        logError("read_files", error);
 
         return JSON.stringify({
-          error:
-            "Unable to read files"
+          error: "Unable to read files",
         });
-
-
       }
-
-
     },
 
-
     {
+      name: "read_files",
 
+      description: "Read existing files before updating them.",
 
-      name:"read_files",
-
-
-      description:
-        "Read existing files before updating them.",
-
-
-      schema:z.object({
-
-        files:z.array(
-          z.string()
-        )
-
-      })
-
-
-    }
-
-
+      schema: z.object({
+        files: z.array(z.string()),
+      }),
+    },
   );
-
-
-
-
-
 
   /**
    * CREATE FILES
    */
   const createFiles = tool(
+    async ({ files }, config) => {
+      const writer = config.context?.writer ?? (() => {});
 
-    async({files})=>{
+      writer("Updating files..." + files.map((f) => f.file).join(",") + "\n");
+      const start = Date.now();
 
+      try {
+        logStart("create_files");
 
-      const start =
-        Date.now();
-
-
-      try{
-
-
-        logStart(
-          "create_files"
-        );
-
-
-        const response =
-          await client.post(
-            "/create-files",
-            {
-              files
-            }
-          );
-
-
-
-        logEnd(
-          "create_files",
-          start
-        );
-
-
-        return JSON.stringify(
-          response.data.results ?? []
-        );
-
-
-      }
-      catch(error){
-
-
-        logError(
-          "create_files",
-          error
-        );
-
-
-        return JSON.stringify({
-          error:
-            "Create files failed"
+        const response = await client.post("/create-files", {
+          files,
         });
 
+        writer("Files updated successfully.\n");
 
+        logEnd("create_files", start);
+
+        return JSON.stringify(response.data.results ?? []);
+      } catch (error) {
+        logError("create_files", error);
+
+        return JSON.stringify({
+          error: "Create files failed",
+        });
       }
-
-
     },
 
-
     {
+      name: "create_files",
 
-      name:
-        "create_files",
+      description: "Create new files only. Never overwrite existing files.",
 
-
-      description:
-        "Create new files only. Never overwrite existing files.",
-
-
-      schema:z.object({
-
-        files:z.array(
-
+      schema: z.object({
+        files: z.array(
           z.object({
+            file: z.string(),
 
-            file:z.string(),
-
-            content:z.string()
-
-          })
-
-        )
-
-      })
-
-    }
-
+            content: z.string(),
+          }),
+        ),
+      }),
+    },
   );
-
-
-
-
-
-
 
   /**
    * UPDATE FILES
    */
   const updateFiles = tool(
+    async ({ files }, config) => {
+      const writer = config.context?.writer ?? (() => {});
 
-    async({files})=>{
+      writer("Updating files..." + files.map((f) => f.file).join(",") + "\n");
+      const start = Date.now();
 
+      try {
+        logStart("update_files");
 
-      const start =
-        Date.now();
+        const response = await client.patch(
+          "/update-files",
 
-
-      try{
-
-
-        logStart(
-          "update_files"
+          {
+            updates: files,
+          },
         );
 
+        writer("Files updated successfully.\n");
 
+        logEnd("update_files", start);
 
-        const response =
-          await client.patch(
-
-            "/update-files",
-
-            {
-              updates:files
-            }
-
-          );
-
-
-
-        logEnd(
-          "update_files",
-          start
-        );
-
-
-        return JSON.stringify(
-          response.data.results ?? []
-        );
-
-
-      }
-      catch(error){
-
-
-        logError(
-          "update_files",
-          error
-        );
-
+        return JSON.stringify(response.data.results ?? []);
+      } catch (error) {
+        logError("update_files", error);
 
         return JSON.stringify({
-
-          error:
-            "Update files failed"
-
+          error: "Update files failed",
         });
-
-
       }
-
-
     },
 
-
     {
+      name: "update_files",
 
+      description: "Update existing files only. Never create new files.",
 
-      name:
-        "update_files",
-
-
-      description:
-        "Update existing files only. Never create new files.",
-
-
-      schema:z.object({
-
-        files:z.array(
-
+      schema: z.object({
+        files: z.array(
           z.object({
+            file: z.string(),
 
-            file:z.string(),
-
-            content:z.string()
-
-          })
-
-        )
-
-      })
-
-
-    }
-
-
+            content: z.string(),
+          }),
+        ),
+      }),
+    },
   );
 
-
-
-
-  return [
-
-    listFiles,
-
-    readFiles,
-
-    createFiles,
-
-    updateFiles
-
-  ];
-
+  return [listFiles, readFiles, createFiles, updateFiles];
 }
