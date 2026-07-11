@@ -7,12 +7,15 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # proxy-http-version 1.1 is enough for WebSocket/HMR — nginx ingress handles
+    # the Upgrade + Connection headers automatically in all modern versions
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
 
 spec:
   ingressClassName: nginx
 
   rules:
+    # *.preview.localhost → router → sandbox Vite dev server (port 5173)
     - host: "*.preview.localhost"
       http:
         paths:
@@ -24,6 +27,7 @@ spec:
                 port:
                   number: 80
 
+    # *.agent.localhost → router → sandbox agent sidecar (port 3000)
     - host: "*.agent.localhost"
       http:
         paths:
@@ -35,6 +39,7 @@ spec:
                 port:
                   number: 80
 
+    # localhost/api/* → direct service routing
     - host: "localhost"
       http:
         paths:

@@ -1,98 +1,73 @@
 import axios from "axios";
-import { tool } from "langchain";
+import { tool } from "@langchain/core/tools"; // Fix: correct package for `tool` helper
 import * as z from "zod";
 
 /**
- * List Files Tool
+ * Factory — returns the three tools wired to a specific sandbox instance.
+ * sandboxId is the UUID created by /api/sandbox/start, e.g. "019f4af4-..."
  */
-export const listfiles = tool(
-  async () => {
-    const response = await axios.get(
-      "http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/list-files",
-    );
-    console.log("==================================");
-    console.log("Using list files tool", response.data.files);
-    console.log("==================================");
-    return JSON.stringify(response.data.files);
-  },
-  {
-    name: "list_files",
-    description:
-      "List all files in the project directory. Useful for understanding what files are available to work with.",
-  },
-);
+export function createTools(sandboxId) {
+  // Base URL for the in-cluster agent sidecar of this sandbox
+  const base = `http://sandbox-svc-${sandboxId}:3000`;
 
-/**
- * Read Files Tool
- */
-export const readfile = tool(
-  async ({ files }) => {
-    console.log("==================================");
-    console.log("Using read file tool");
-    console.log("Files:", files);
-    console.log("==================================");
+  /** List all project files (excludes node_modules, .git, dist) */
+  const listfiles = tool(
+    async () => {
+      const response = await axios.get(`${base}/list-files`);
+      console.log("list_files →", response.data.files);
+      return JSON.stringify(response.data.files);
+    },
+    {
+      name: "list_files",
+      description:
+        "List all files in the project directory. Use this first to understand what files exist.",
+    },
+  );
 
-    const response = await axios.get(
-      `http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/read-files?files=${encodeURIComponent(
-        files.join(","),
-      )}`,
-    );
+  /** Read the contents of one or more files */
+  const readfile = tool(
+    async ({ files }) => {
+      console.log("read_file →", files);
+      const query = encodeURIComponent(files.join(","));
+      const response = await axios.get(`${base}/read-files?files=${query}`);
+      return JSON.stringify(response.data.files);
+    },
+    {
+      name: "read_file",
+      description:
+        "Read the contents of one or more files. Paths must be relative (as returned by list_files).",
+      schema: z.object({
+        files: z
+          .array(z.string())
+          .describe("List of relative file paths to read."),
+      }),
+    },
+  );
 
-    return JSON.stringify(response.data.files);
-  },
-  {
-    name: "read_file",
-    description:
-      "Read the contents of one or more files. The files should exist in the project directory.",
-    schema: z.object({
-      files: z
-        .array(z.string())
-        .describe(
-          "List of absolute file paths to read. These should be returned by the list_files tool or created later.",
-        ),
-    }),
-  },
-);
-
-/**
- * Update/Create Files Tool
- */
-export const updateFiles = tool(
-  async ({ files }) => {
-    console.log("==================================");
-    console.log("Using update files tool");
-    console.log(files);
-    console.log("==================================");
-
-    const response = await axios.patch(
-      "http://019f47ff-9e16-7370-bd2f-e8f3c23eb429.agent.localhost/update-files",
-      {
+  /** Update or create files with new content */
+  const updateFiles = tool(
+    async ({ files }) => {
+      console.log("update_files →", files);
+      const response = await axios.patch(`${base}/update-files`, {
         updates: files,
-      },
-    );
-
-    console.log("==================================");
-    console.log("Update response:");
-    console.log(response.data);
-    console.log("==================================");
-
-    return JSON.stringify(response.data.results);
-  },
-  {
-    name: "update_files",
-    description:
-      "Update existing files or create new files by providing the file path and content.",
-    schema: z.object({
-      files: z
-        .array(
+      });
+      console.log("update_files result:", response.data);
+      return JSON.stringify(response.data.results);
+    },
+    {
+      name: "update_files",
+      description:
+        "Update existing files or create new files. Provide the relative path and new content.",
+      schema: z.object({
+        files: z.array(
           z.object({
-            file: z
-              .string()
-              .describe("Absolute path of the file to update or create."),
+            file: z.string().describe("Relative path of the file to update or create."),
             content: z.string().describe("New content for the file."),
           }),
-        )
-        .describe("List of files and their contents."),
-    }),
-  },
-);
+        ),
+      }),
+    },
+  );
+
+  return [listfiles, readfile, updateFiles];
+}

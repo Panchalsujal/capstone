@@ -9,6 +9,7 @@ app.use(morgan("dev"));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api/ai", agentRouter);
 
+
 app.get("/api/status/healthz", (req, res) => {
   res.status(200).json({ status: "ok" });
 });

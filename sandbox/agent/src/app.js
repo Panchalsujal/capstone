@@ -83,16 +83,13 @@ app.get("/read-files", async (req, res) => {
 
   const results = await Promise.all(
     filesList.map(async (file) => {
-      const filePath = `${WORKING_DIR}/${file}`;
+      // Fix: use path.join (consistent with update-files, avoids double-slash issues)
+      const filePath = path.join(WORKING_DIR, file);
       try {
         const data = await fs.promises.readFile(filePath, "utf-8");
-        return {
-          [filePath]: data,
-        };
+        return { [filePath]: data };
       } catch (err) {
-        return {
-          [filePath]: `Error reading file: ${err.message}`,
-        };
+        return { [filePath]: `Error reading file: ${err.message}` };
       }
     }),
   );

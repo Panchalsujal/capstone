@@ -11,7 +11,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * Poll until the pod's phase is "Running" (or timeout after 2 minutes).
+ * Poll until all containers in the pod report ready=true (or timeout after 2 min).
+ * Checks both pod.phase and containerStatuses.ready to avoid returning a URL
+ * while containers are still initializing (which would cause 502 errors).
  */
 async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
   const podName = `sandbox-pod-${sandboxId}`;
@@ -24,12 +26,19 @@ async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
     });
 
     const phase = pod?.status?.phase;
-    if (phase === "Running") return;
+
     if (phase === "Failed" || phase === "Unknown") {
       throw new Error(`Pod entered phase: ${phase}`);
     }
 
-    // Wait 2 seconds before polling again
+    // Fix: also verify all container statuses are ready, not just pod phase
+    if (phase === "Running") {
+      const statuses = pod?.status?.containerStatuses || [];
+      const allReady = statuses.length > 0 && statuses.every((c) => c.ready);
+      if (allReady) return;
+    }
+
+    // Poll every 2 seconds
     await new Promise((r) => setTimeout(r, 2000));
   }
 
@@ -37,10 +46,7 @@ async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
 }
 
 app.get("/api/sandbox/health", (req, res) => {
-  res.status(200).json({
-    message: "Sandbox Api is healthy",
-    status: "ok",
-  });
+  res.status(200).json({ message: "Sandbox Api is healthy", status: "ok" });
 });
 
 app.post("/api/sandbox/start", async (req, res) => {
@@ -50,8 +56,7 @@ app.post("/api/sandbox/start", async (req, res) => {
     // Create pod and service concurrently
     await Promise.all([createPode(sandboxId), createService(sandboxId)]);
 
-    // Wait for the pod to actually be running before giving back the URL,
-    // otherwise the user gets a 502/504 when they immediately open it.
+    // Wait until all containers are truly ready before returning the URL
     await waitForPodReady(sandboxId);
 
     return res.status(201).json({

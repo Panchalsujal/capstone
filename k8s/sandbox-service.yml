@@ -1,12 +1,14 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name:  sandbox-service
+  name: sandbox-service
 spec:
+  # Fix: updated selector to match sandbox-deployment's new label (app: sandbox-server)
+  # Prevents accidental routing to dynamic user sandbox pods (app: sandbox)
   selector:
-    app:  sandbox
-  type:  ClusterIP
+    app: sandbox-server
+  type: ClusterIP
   ports:
-  - name:  sandbox-port
-    port:  80
-    targetPort:  3000
+  - name: sandbox-port
+    port: 80
+    targetPort: 3000
