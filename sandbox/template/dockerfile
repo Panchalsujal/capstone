@@ -1,16 +1,27 @@
 FROM node:20-alpine
 
-WORKDIR /workspace
-
-# dependencies first (better caching)
+# ── Install dependencies outside /workspace ──────────────────────────────────
+# /app/node_modules lives in the image layer, not the workspace volume.
+# This means mounting an emptyDir at /workspace will NOT shadow node_modules.
+WORKDIR /app
 COPY package*.json ./
-
 RUN npm install
 
-# copy source
+# ── Copy source files into /workspace ────────────────────────────────────────
+# node_modules is excluded via .dockerignore, so only source files land here.
+WORKDIR /workspace
 COPY . .
+
+# ── Symlink so that Node/Vite can resolve modules via the standard path ───────
+# The symlink lives in the image layer; the emptyDir overlay is per-file so it
+# will NOT hide the symlink unless a real directory named node_modules is placed
+# there. When the init-container copies workspace files (excluding node_modules)
+# the symlink target (/app/node_modules) remains accessible.
+RUN ln -s /app/node_modules /workspace/node_modules
+
+# ── Make start.sh executable ──────────────────────────────────────────────────
+RUN chmod +x /workspace/start.sh
 
 EXPOSE 5173
 
-# IMPORTANT: force host binding
-CMD ["npm", "run", "dev"]
+CMD ["/workspace/start.sh"]
