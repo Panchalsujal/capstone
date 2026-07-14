@@ -11,18 +11,5 @@ echo "Starting Vite dev server..."
 npm run dev &
 VITE_PID=$!
 
-# 3. In the background, copy node_modules to make it writable
-if [ -L /workspace/node_modules ]; then
-  (
-    echo "Starting background copy of node_modules to shared volume..."
-    cp -r /app/node_modules /workspace/node_modules_tmp
-    
-    # Atomically replace the symlink with the real directory
-    rm /workspace/node_modules
-    mv /workspace/node_modules_tmp /workspace/node_modules
-    echo "Background copy of node_modules completed successfully."
-  ) &
-fi
-
-# 4. Wait for Vite process
+# 3. Wait for Vite process
 wait $VITE_PID

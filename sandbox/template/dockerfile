@@ -19,6 +19,13 @@ COPY . .
 # the symlink target (/app/node_modules) remains accessible.
 RUN ln -s /app/node_modules /workspace/node_modules
 
+# ── Pre-warm Vite dep-optimizer cache ────────────────────────────────────────
+# Running vite optimize at build time bakes node_modules/.vite/deps/ into the
+# image layer. At container startup Vite detects the existing cache and skips
+# the expensive scan+bundle step (saves ~30s of cold-start time).
+# NODE_PATH is set so Vite can resolve packages from /app/node_modules.
+RUN NODE_PATH=/app/node_modules npx vite optimize
+
 # ── Make start.sh executable ──────────────────────────────────────────────────
 RUN chmod +x /workspace/start.sh
 

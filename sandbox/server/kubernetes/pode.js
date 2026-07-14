@@ -26,7 +26,7 @@ export async function createPode(sandboxId) {
       initContainers: [
         {
           name: "init-container",
-          image: "template",
+          image: "template:v2",
           imagePullPolicy: "IfNotPresent",
           // Copies only source files — deliberately excludes node_modules.
           // node_modules live at /app/node_modules inside the template image and
@@ -46,7 +46,7 @@ export async function createPode(sandboxId) {
         {
           // Serves the Vite dev server (preview)
           name: "sandbox-container",
-          image: "template",
+          image: "template:v2",
           imagePullPolicy: "IfNotPresent",
           ports: [
             {
@@ -75,8 +75,8 @@ export async function createPode(sandboxId) {
               path: "/",
               port: 5173,
             },
-            failureThreshold: 60,
-            periodSeconds: 2,
+            failureThreshold: 120,
+            periodSeconds: 1,
           },
           // Once startupProbe passes, readinessProbe takes over with a tight poll.
           // failureThreshold: 15 × 2s = 30s grace before marking unready.
@@ -85,9 +85,9 @@ export async function createPode(sandboxId) {
               path: "/",
               port: 5173,
             },
-            initialDelaySeconds: 2,
-            periodSeconds: 2,
-            failureThreshold: 15,
+            initialDelaySeconds: 1,
+            periodSeconds: 1,
+            failureThreshold: 30,
           },
           volumeMounts: [
             {
@@ -119,9 +119,9 @@ export async function createPode(sandboxId) {
               path: "/",
               port: 3000,
             },
-            initialDelaySeconds: 5,
-            periodSeconds: 2,
-            failureThreshold: 15,
+            initialDelaySeconds: 3,
+            periodSeconds: 1,
+            failureThreshold: 30,
           },
           volumeMounts: [
             {
