@@ -2,6 +2,10 @@ import express from "express";
 import morgan from "morgan";
 import fs from "fs";
 import path from "path";
+import "dotenv/config";
+import { Server } from "socket.io";
+import http from "http";
+import pty from 'node-pty'
 const app = express();
 
 app.use(express.json());
@@ -9,9 +13,48 @@ app.use(express.urlencoded({ extended: true }));
 const WORKING_DIR = "/workspace";
 app.use(morgan("dev"));
 
+// setup http server
+const httpServer = http.createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PATCH"],
+  },
+});
+
+const shell = process.env.SHELL || "bash";
+
+const ptyProcess = pty.spawn(shell, [], {
+  name: "xterm-color",
+  cols: 80,
+  rows: 30,
+  cwd: "/workspace",
+  env: process.env,
+});
+
+ptyProcess.onData((data) => {
+  io.emit("output", data);
+});
+
+ptyProcess.onExit(({ exitCode, signal }) => {
+  console.log(`PTY process exited with code : ${exitCode},signal:${signal}`);
+});
+
+io.on("connection", (socket) => {
+  console.log("Client connected: " + socket.id);
+
+  socket.on("input", (data) => {
+    ptyProcess.write(data);
+  });
+  socket.on("disconnect", () => {
+    console.log("Client disconnected: " + socket.id);
+  });
+});
+
 app.get("/", (req, res) => {
   res.status(200).json({
-    message: "Hello",
+    message: "From SandBox Agent",
     status: "Success",
   });
 });
@@ -144,36 +187,38 @@ app.patch("/update-files", async (req, res) => {
  */
 
 app.post("/create-files", async (req, res) => {
-    const files = req.body.files;
+  const files = req.body.files;
 
-    if (!files || !Array.isArray(files)) {
-        return res.status(400).json({
-            message: 'Invalid request body. Expected a JSON object with a "files" property containing an array of file objects.',
-            status: 'error',
-        });
-    }
-
-    const results = await Promise.all(files.map(async (fileObj) => {
-        const { file, content } = fileObj;
-        const filePath = path.join(WORKING_DIR, file);
-        try {
-
-            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.promises.writeFile(filePath, content, 'utf-8');
-            return {
-                [ filePath ]: 'File created successfully',
-            }
-        } catch (err) {
-            return {
-                [ filePath ]: `Error creating file: ${err.message}`,
-            }
-        }
-    }));
-
-    res.status(200).json({
-        message: 'File creation results',
-        results,
+  if (!files || !Array.isArray(files)) {
+    return res.status(400).json({
+      message:
+        'Invalid request body. Expected a JSON object with a "files" property containing an array of file objects.',
+      status: "error",
     });
-})
+  }
 
-export default app;
+  const results = await Promise.all(
+    files.map(async (fileObj) => {
+      const { file, content } = fileObj;
+      const filePath = path.join(WORKING_DIR, file);
+      try {
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, content, "utf-8");
+        return {
+          [filePath]: "File created successfully",
+        };
+      } catch (err) {
+        return {
+          [filePath]: `Error creating file: ${err.message}`,
+        };
+      }
+    }),
+  );
+
+  res.status(200).json({
+    message: "File creation results",
+    results,
+  });
+});
+
+export default httpServer;

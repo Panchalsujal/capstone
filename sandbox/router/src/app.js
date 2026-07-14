@@ -1,156 +1,131 @@
 import express from "express";
+import http from "http";
 import morgan from "morgan";
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
+const server = http.createServer(app);
 
 app.use(morgan("dev"));
 
-/**
- * -------------------------
- * Health Check
- * -------------------------
- */
-app.get("/api/status/healthz", (req, res) => {
-  res.json({
-    status: "ok",
-  });
+app.get("/api/status/healthz", (_, res) => {
+  res.json({ status: "ok" });
 });
 
-/**
- * -------------------------
- * Readiness Check
- * -------------------------
- */
-app.get("/api/status/readyz", (req, res) => {
-  res.json({
-    status: "ready",
-  });
+app.get("/api/status/readyz", (_, res) => {
+  res.json({ status: "ready" });
 });
 
-/**
- * -----------------------------------
- * Proxy Cache
- * -----------------------------------
- *
- * Key Example:
- * abc-default
- * abc-3000
- */
 const proxyCache = new Map();
 
-/**
- * Returns cached proxy instance.
- */
-function getProxy(sandboxId, port = null) {
-  const cacheKey = `${sandboxId}-${port || "default"}`;
+function getProxy(sandboxId, port) {
+  const key = `${sandboxId}-${port}`;
 
-  if (proxyCache.has(cacheKey)) {
-    return proxyCache.get(cacheKey);
+  if (proxyCache.has(key)) {
+    return proxyCache.get(key);
   }
 
-  const target = port
-    ? `http://sandbox-svc-${sandboxId}:${port}`
-    : `http://sandbox-svc-${sandboxId}`;
+  const target = `http://sandbox-svc-${sandboxId}:${port}`;
 
-  console.log(`Creating Proxy -> ${target}`);
+  console.log(`Creating proxy -> ${target}`);
 
   const proxy = createProxyMiddleware({
     target,
     changeOrigin: true,
-    ws: true,
+    // Note: do NOT set ws: true here — it conflicts with the manual
+    // server.on("upgrade") handler below and causes double-handling
 
     on: {
       proxyReq(proxyReq, req) {
         console.log(
-          `[${req.method}] ${req.headers.host}${req.originalUrl} -> ${target}`
+          `[HTTP] ${req.method} ${req.headers.host}${req.url} -> ${target}`
         );
       },
 
+      proxyReqWs(proxyReq, req) {
+        console.log(`[WS] ${req.headers.host}${req.url} -> ${target}`);
+      },
+
       error(err, req, res) {
-        console.error(`Proxy Error (${cacheKey})`, err.message);
+        console.error(err);
 
-        proxyCache.delete(cacheKey);
+        proxyCache.delete(key);
 
-        if (!res.headersSent) {
+        if (res && !res.headersSent) {
           res.status(502).json({
             success: false,
-            message: "Sandbox unavailable",
+            message: err.message,
           });
         }
       },
     },
   });
 
-  proxyCache.set(cacheKey, proxy);
+  proxyCache.set(key, proxy);
 
   return proxy;
 }
-
-/**
- * -----------------------------------
- * Dynamic Sandbox Router
- * -----------------------------------
- *
- * abc.preview.localhost
- *        │
- *        ▼
- * sandbox-svc-abc
- *
- *
- * abc.agent.localhost
- *        │
- *        ▼
- * sandbox-svc-abc:3000
- *
- */
 
 app.use((req, res, next) => {
   const host = req.headers.host;
 
   if (!host) {
-    return res.status(400).json({
-      success: false,
-      message: "Host header missing",
-    });
+    return res.status(400).send("Host header missing");
   }
 
-  // Remove :80 / :3000 if present
   const hostname = host.split(":")[0];
 
   const parts = hostname.split(".");
 
   if (parts.length < 3) {
-    return res.status(404).json({
-      success: false,
-      message: "Invalid hostname",
-    });
+    return res.status(404).send("Invalid Host");
   }
 
   const sandboxId = parts[0];
   const service = parts[1];
 
-  switch (service) {
-    case "preview":
-      console.log(
-        `Preview Request : ${hostname} -> sandbox-svc-${sandboxId}`
-      );
+  if (service === "preview") {
+    return getProxy(sandboxId, 5173)(req, res, next);
+  }
 
-      return getProxy(sandboxId)(req, res, next);
+  if (service === "agent") {
+    return getProxy(sandboxId, 3000)(req, res, next);
+  }
 
-    case "agent":
-      console.log(
-        `Agent Request : ${hostname} -> sandbox-svc-${sandboxId}:3000`
-      );
+  return res.status(404).send("Unknown service");
+});
 
-      return getProxy(sandboxId, 3000)(req, res, next);
+server.on("upgrade", (req, socket, head) => {
+  const host = req.headers.host;
 
-    default:
-      return res.status(404).json({
-        success: false,
-        message: "Unknown service",
-      });
+  if (!host) {
+    socket.destroy();
+    return;
+  }
+
+  const hostname = host.split(":")[0];
+
+  const parts = hostname.split(".");
+
+  if (parts.length < 3) {
+    socket.destroy();
+    return;
+  }
+
+  const sandboxId = parts[0];
+  const service = parts[1];
+
+  const port = service === "preview" ? 5173 : 3000;
+
+  const proxy = getProxy(sandboxId, port);
+
+  // HPM v4: proxy.upgrade is a valid method for manual WebSocket upgrade handling
+  if (typeof proxy.upgrade === "function") {
+    proxy.upgrade(req, socket, head);
+  } else {
+    console.error("[WS] proxy.upgrade is not a function — WebSocket upgrade failed");
+    socket.destroy();
   }
 });
 
-export default app;
+export default server;

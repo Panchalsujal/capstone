@@ -10,6 +10,10 @@ metadata:
     # proxy-http-version 1.1 is enough for WebSocket/HMR — nginx ingress handles
     # the Upgrade + Connection headers automatically in all modern versions
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # Explicitly enable WebSocket support for Socket.IO and Vite HMR
+    nginx.ingress.kubernetes.io/enable-websockets: "true"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
 
 spec:
   ingressClassName: nginx

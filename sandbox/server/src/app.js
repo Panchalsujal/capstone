@@ -14,10 +14,22 @@ app.use(express.urlencoded({ extended: true }));
  * Poll until all containers in the pod report ready=true (or timeout after 2 min).
  * Checks both pod.phase and containerStatuses.ready to avoid returning a URL
  * while containers are still initializing (which would cause 502 errors).
+ * Also detects CrashLoopBackOff / OOMKilled early so we fail fast instead of
+ * waiting for the full timeout.
  */
 async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
   const podName = `sandbox-pod-${sandboxId}`;
   const start = Date.now();
+
+  // Container waiting reasons that mean the pod will never become ready
+  const FATAL_REASONS = new Set([
+    "CrashLoopBackOff",
+    "OOMKilled",
+    "ImagePullBackOff",
+    "ErrImagePull",
+    "CreateContainerConfigError",
+    "InvalidImageName",
+  ]);
 
   while (Date.now() - start < timeoutMs) {
     const pod = await k8sCoreV1Api.readNamespacedPod({
@@ -31,10 +43,29 @@ async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
       throw new Error(`Pod entered phase: ${phase}`);
     }
 
-    // Fix: also verify all container statuses are ready, not just pod phase
+    const initStatuses = pod?.status?.initContainerStatuses || [];
+    const containerStatuses = pod?.status?.containerStatuses || [];
+    const allStatuses = [...initStatuses, ...containerStatuses];
+
+    // Detect any container stuck in a fatal waiting state — fail immediately
+    for (const c of allStatuses) {
+      const reason = c?.state?.waiting?.reason;
+      if (FATAL_REASONS.has(reason)) {
+        throw new Error(
+          `Container "${c.name}" is in an unrecoverable state: ${reason}`
+        );
+      }
+      // Also check lastState for OOMKilled (container briefly Running then killed)
+      const lastReason = c?.lastState?.terminated?.reason;
+      if (lastReason === "OOMKilled") {
+        throw new Error(`Container "${c.name}" was OOMKilled — increase memory limits`);
+      }
+    }
+
+    // All containers ready → pod is fully up
     if (phase === "Running") {
-      const statuses = pod?.status?.containerStatuses || [];
-      const allReady = statuses.length > 0 && statuses.every((c) => c.ready);
+      const allReady =
+        containerStatuses.length > 0 && containerStatuses.every((c) => c.ready);
       if (allReady) return;
     }
 
