@@ -17,7 +17,7 @@ app.use(express.urlencoded({ extended: true }));
  * Also detects CrashLoopBackOff / OOMKilled early so we fail fast instead of
  * waiting for the full timeout.
  */
-async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
+async function waitForPodReady(sandboxId, timeoutMs = 240_000) {
   const podName = `sandbox-pod-${sandboxId}`;
   const start = Date.now();
 
@@ -69,8 +69,8 @@ async function waitForPodReady(sandboxId, timeoutMs = 120_000) {
       if (allReady) return;
     }
 
-    // Poll every 2 seconds
-    await new Promise((r) => setTimeout(r, 2000));
+    // Poll every 500 ms — reduces the "missed window" latency from up to 2 s → 500 ms.
+    await new Promise((r) => setTimeout(r, 500));
   }
 
   throw new Error("Timed out waiting for pod to become ready");
@@ -83,12 +83,18 @@ app.get("/api/sandbox/health", (req, res) => {
 app.post("/api/sandbox/start", async (req, res) => {
   try {
     const sandboxId = uuid();
+    console.time(`[sandbox:${sandboxId}] total`);
 
     // Create pod and service concurrently
+    console.time(`[sandbox:${sandboxId}] create`);
     await Promise.all([createPode(sandboxId), createService(sandboxId)]);
+    console.timeEnd(`[sandbox:${sandboxId}] create`);
 
     // Wait until all containers are truly ready before returning the URL
+    console.time(`[sandbox:${sandboxId}] ready`);
     await waitForPodReady(sandboxId);
+    console.timeEnd(`[sandbox:${sandboxId}] ready`);
+    console.timeEnd(`[sandbox:${sandboxId}] total`);
 
     return res.status(201).json({
       message: "Sandbox environment created successfully",

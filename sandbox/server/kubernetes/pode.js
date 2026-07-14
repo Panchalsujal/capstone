@@ -19,21 +19,21 @@ export async function createPode(sandboxId) {
         },
       ],
 
-      // Init-container: seeds the shared volume with the template project files.
-      // node_modules is excluded — it is already baked into the image and would
-      // add ~100 MB of file copies on every pod creation if included.
+      // Init-container: seeds the shared emptyDir volume with the template project files.
+      // Uses cp -a to recursively copy all files (source + node_modules) from the image
+      // into the shared volume that both sandbox-container and agent-container mount.
       initContainers: [
         {
           name: "init-container",
           image: "template",
           imagePullPolicy: "IfNotPresent",
-          // Copies the full workspace including node_modules into the shared volume.
-          // node_modules MUST be included because the sandbox-container mounts this
-          // volume at /workspace, which shadows the image's own /workspace/node_modules.
-          // Without node_modules in the volume, `vite` is not found (exit 127).
           command: [
             "sh",
             "-c",
+            // Copy all workspace files (including node_modules) into the shared emptyDir volume.
+            // NOTE: cp -al (hard-links) does NOT work here — emptyDir is a separate filesystem
+            // mount from the image layer, so hard-links always fail with "Invalid cross-device link".
+            // cp -a does a proper recursive copy and correctly handles the cross-device boundary.
             "cp -a /workspace/. /seed/",
           ],
           volumeMounts: [
@@ -61,17 +61,28 @@ export async function createPode(sandboxId) {
             requests: { cpu: "100m", memory: "256Mi" },
             limits: { cpu: "500m", memory: "512Mi" },
           },
-          // Fix: readinessProbe ensures Kubernetes waits until Vite is actually
-          // listening before marking this container ready. Without this, the pod
-          // is marked ready immediately on process start, causing 502 errors.
+          // startupProbe gives Vite up to 120 s (60 × 2 s) to boot on first start.
+          // Vite cold-starts (no pre-built cache) can take 60-90 s on a fresh emptyDir
+          // workspace — 30×2s was not enough. 60×2s=120s covers even slow nodes.
+          // Once it succeeds once, Kubernetes switches to the faster readinessProbe.
+          startupProbe: {
+            httpGet: {
+              path: "/",
+              port: 5173,
+            },
+            failureThreshold: 60,
+            periodSeconds: 2,
+          },
+          // Once startupProbe passes, readinessProbe takes over with a tight poll.
+          // failureThreshold: 15 × 2s = 30s grace before marking unready.
           readinessProbe: {
             httpGet: {
               path: "/",
               port: 5173,
             },
-            initialDelaySeconds: 5,
-            periodSeconds: 3,
-            failureThreshold: 10,
+            initialDelaySeconds: 2,
+            periodSeconds: 2,
+            failureThreshold: 15,
           },
           volumeMounts: [
             {
@@ -96,17 +107,16 @@ export async function createPode(sandboxId) {
             requests: { cpu: "100m", memory: "256Mi" },
             limits: { cpu: "500m", memory: "512Mi" },
           },
-          // Fix: readinessProbe ensures Kubernetes waits until the agent HTTP
-          // server is actually listening before marking this container ready.
-          // Without this, the pod URL is returned before Socket.IO is ready.
+          // node-pty spawns a shell on startup; give it 5 s before first probe.
+          // failureThreshold: 15 × 2s = 30s grace window.
           readinessProbe: {
             httpGet: {
               path: "/",
               port: 3000,
             },
-            initialDelaySeconds: 3,
-            periodSeconds: 3,
-            failureThreshold: 10,
+            initialDelaySeconds: 5,
+            periodSeconds: 2,
+            failureThreshold: 15,
           },
           volumeMounts: [
             {
