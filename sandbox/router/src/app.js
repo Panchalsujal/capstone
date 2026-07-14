@@ -85,7 +85,7 @@ app.use((req, res, next) => {
   const service = parts[1];
 
   if (service === "preview") {
-    return getProxy(sandboxId, 5173)(req, res, next);
+    return getProxy(sandboxId, 80)(req, res, next);
   }
 
   if (service === "agent") {
@@ -115,7 +115,7 @@ server.on("upgrade", (req, socket, head) => {
   const sandboxId = parts[0];
   const service = parts[1];
 
-  const port = service === "preview" ? 5173 : 3000;
+  const port = service === "preview" ? 80 : 3000;
 
   const proxy = getProxy(sandboxId, port);
 
