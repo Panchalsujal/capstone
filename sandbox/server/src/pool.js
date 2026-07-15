@@ -20,14 +20,23 @@ import { createPode } from "./../kubernetes/pode.js";
 import { k8sCoreV1Api } from "./../kubernetes/config.js";
 import { v7 as uuid } from "uuid";
 
+// How long a pod is allowed to stay Pending without being assigned to a node
+// before we treat it as an unschedulable failure (ms).
+// Keeping this SHORT prevents the 180s timeout from firing and triggering retries
+// when the cluster simply doesn't have capacity.
+const PENDING_TIMEOUT_MS = 30_000;
+
 // How many warm pods to keep ready at all times.
-const POOL_SIZE = parseInt(process.env.POOL_SIZE || "2", 10);
+const POOL_SIZE = parseInt(process.env.POOL_SIZE || "1", 10);
 
 // How often to poll a provisioning pod for readiness (ms).
 const POLL_INTERVAL_MS = 1000;
 
 // How long to wait for a pod to become ready before giving up (ms).
 const POD_TIMEOUT_MS = 180_000;
+
+// Maximum number of times addSlotAndWait() will retry on failure before giving up.
+const MAX_SLOT_RETRIES = 3;
 
 // Fatal container waiting states — stop polling immediately.
 const FATAL_REASONS = new Set([
@@ -46,15 +55,56 @@ const FATAL_REASONS = new Set([
 /** @type {PoolSlot[]} */
 const pool = [];
 
+// ─── Kubernetes cleanup helpers ──────────────────────────────────────────────
+
+/**
+ * Best-effort delete of a pod and its associated service from Kubernetes.
+ * Errors are logged but NOT re-thrown so a cleanup failure never crashes
+ * the pool management loop.
+ *
+ * @param {string} sandboxId
+ */
+async function cleanupK8sResources(sandboxId) {
+  const podName = `sandbox-pod-${sandboxId}`;
+  const svcName = `sandbox-svc-${sandboxId}`;
+
+  await Promise.allSettled([
+    k8sCoreV1Api
+      .deleteNamespacedPod({ name: podName, namespace: "default" })
+      .then(() => console.log(`[pool] Deleted pod ${podName}`))
+      .catch((err) => {
+        if (err?.body?.code !== 404) {
+          console.warn(`[pool] Could not delete pod ${podName}:`, err?.body?.message || err?.message);
+        }
+      }),
+    k8sCoreV1Api
+      .deleteNamespacedService({ name: svcName, namespace: "default" })
+      .then(() => console.log(`[pool] Deleted service ${svcName}`))
+      .catch((err) => {
+        if (err?.body?.code !== 404) {
+          console.warn(`[pool] Could not delete service ${svcName}:`, err?.body?.message || err?.message);
+        }
+      }),
+  ]);
+}
+
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 /**
- * Poll a pod until all containers are ready, then mark the slot "ready".
- * If it fails or times out, remove the slot and schedule a replacement.
+ * Poll a pod by name until all its containers are ready.
+ *
+ * This is the single source of truth for "is this pod ready" — used both
+ * for background pool slots and for the on-demand slow path, so there is
+ * only one place that can get the k8s polling logic wrong.
+ *
+ * @param {string} sandboxId
+ * @returns {Promise<{ ok: true } | { ok: false, reason: string }>}
+ *   Resolves (never rejects) with a result describing why polling stopped.
  */
-async function watchUntilReady(slot) {
-  const podName = `sandbox-pod-${slot.sandboxId}`;
+async function waitForPodReady(sandboxId) {
+  const podName = `sandbox-pod-${sandboxId}`;
   const start = Date.now();
+  let pendingSince = null; // tracks when we first saw the pod stuck in Pending
 
   while (Date.now() - start < POD_TIMEOUT_MS) {
     try {
@@ -66,9 +116,7 @@ async function watchUntilReady(slot) {
       const phase = pod?.status?.phase;
 
       if (phase === "Failed" || phase === "Unknown") {
-        console.warn(`[pool] Pod ${slot.sandboxId} entered phase ${phase} — dropping`);
-        removeAndReplenish(slot);
-        return;
+        return { ok: false, reason: `pod entered phase ${phase}`, retryable: false };
       }
 
       const initStatuses = pod?.status?.initContainerStatuses || [];
@@ -77,44 +125,76 @@ async function watchUntilReady(slot) {
       for (const c of [...initStatuses, ...containerStatuses]) {
         const reason = c?.state?.waiting?.reason;
         if (FATAL_REASONS.has(reason)) {
-          console.warn(`[pool] Container ${c.name} fatal: ${reason} — dropping pod ${slot.sandboxId}`);
-          removeAndReplenish(slot);
-          return;
+          return { ok: false, reason: `container ${c.name} fatal: ${reason}`, retryable: false };
         }
       }
 
       if (phase === "Running") {
+        pendingSince = null; // pod made it past Pending — reset the stuck-pending timer
         const allReady =
           containerStatuses.length > 0 && containerStatuses.every((c) => c.ready);
         if (allReady) {
-          slot.status = "ready";
-          console.log(`[pool] Pod ${slot.sandboxId} is ready (${Math.round((Date.now() - start) / 1000)}s)`);
-          return;
+          return { ok: true };
+        }
+      } else if (phase === "Pending") {
+        // Track how long we've been stuck in Pending with no node assigned.
+        // A pod that stays Pending means the cluster can't schedule it —
+        // retrying will just create another pod that also can't be scheduled.
+        const nodeName = pod?.spec?.nodeName;
+        if (!nodeName) {
+          if (!pendingSince) pendingSince = Date.now();
+          const pendingMs = Date.now() - pendingSince;
+          if (pendingMs > PENDING_TIMEOUT_MS) {
+            return {
+              ok: false,
+              reason: `pod stuck Pending for ${Math.round(pendingMs / 1000)}s — cluster may lack capacity`,
+              retryable: false, // retrying won't help if the cluster is full
+            };
+          }
+        } else {
+          pendingSince = null; // node assigned, containers still initializing — that's fine
         }
       }
     } catch (err) {
-      // Pod may not exist in k8s yet — keep polling
+      // Pod may not exist in k8s yet — keep polling.
+      // Anything else (auth error, wrong client signature, etc.) gets logged
+      // so a systemic failure doesn't silently look like "still booting".
       if (err?.body?.code !== 404) {
-        console.error(`[pool] Error polling ${slot.sandboxId}:`, err?.body?.message || err?.message);
+        console.error(
+          `[pool] Error polling ${sandboxId}:`,
+          err?.body?.message || err?.message || err
+        );
       }
     }
 
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 
-  console.warn(`[pool] Pod ${slot.sandboxId} timed out — dropping`);
-  removeAndReplenish(slot);
+  return { ok: false, reason: "timed out waiting for readiness", retryable: false };
 }
 
-/** Remove a slot from the pool and add a fresh replacement. */
-function removeAndReplenish(slot) {
-  const idx = pool.indexOf(slot);
-  if (idx !== -1) pool.splice(idx, 1);
-  addSlot();
-}
+/**
+ * Create one new pod+service, register it as a pool slot, and watch it
+ * until it's ready (or drop + replace it on failure). Awaitable — resolves
+ * once the slot is ready or has been permanently given up on.
+ *
+ * On failure, retries up to MAX_SLOT_RETRIES times before giving up, so
+ * a single bad image pull or node hiccup doesn't leave the pool short.
+ * The retry counter prevents infinite pod creation (the original bug that
+ * caused 11+ pods to appear on startup).
+ *
+ * @param {number} [retries=0] - Current retry depth. Do not pass externally.
+ * @returns {Promise<void>}
+ */
+async function addSlotAndWait(retries = 0) {
+  // Guard: never exceed POOL_SIZE pods in-flight (provisioning + ready).
+  // Claimed pods are spliced out of the pool[] array immediately when claimed,
+  // so pool.length is the accurate count of active (provisioning + ready) slots.
+  if (pool.length >= POOL_SIZE) {
+    console.log(`[pool] Skipping slot creation — already ${pool.length} pod(s) in pool (limit ${POOL_SIZE})`);
+    return;
+  }
 
-/** Create one new pod+service slot and start watching it. */
-async function addSlot() {
   const sandboxId = uuid();
   /** @type {PoolSlot} */
   const slot = {
@@ -124,29 +204,83 @@ async function addSlot() {
   };
 
   pool.push(slot);
-  console.log(`[pool] Provisioning warm pod ${sandboxId} (pool size: ${pool.length})`);
+  console.log(`[pool] Provisioning warm pod ${sandboxId} (pool size: ${pool.length}, attempt: ${retries + 1}/${MAX_SLOT_RETRIES + 1})`);
 
   try {
     await Promise.all([createPode(sandboxId), createService(sandboxId)]);
-    watchUntilReady(slot); // intentionally not awaited — runs in background
   } catch (err) {
     console.error(`[pool] Failed to create pod ${sandboxId}:`, err?.body?.message || err?.message);
-    removeAndReplenish(slot);
+    const idx = pool.indexOf(slot);
+    if (idx !== -1) pool.splice(idx, 1);
+    // Clean up any k8s resources that may have been partially created
+    await cleanupK8sResources(sandboxId);
+
+    if (retries >= MAX_SLOT_RETRIES) {
+      console.error(`[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`);
+      return;
+    }
+    await addSlotAndWait(retries + 1);
+    return;
+  }
+
+  const start = Date.now();
+  const result = await waitForPodReady(sandboxId);
+
+  if (result.ok) {
+    slot.status = "ready";
+    console.log(`[pool] Pod ${sandboxId} is ready (${Math.round((Date.now() - start) / 1000)}s)`);
+  } else {
+    console.warn(`[pool] Dropping pod ${sandboxId}: ${result.reason}`);
+    const idx = pool.indexOf(slot);
+    if (idx !== -1) pool.splice(idx, 1);
+
+    // Always clean up the failed pod+service from Kubernetes so it doesn't
+    // sit as a ghost Pending pod consuming resources.
+    await cleanupK8sResources(sandboxId);
+
+    // Don't retry on non-retryable failures (e.g. cluster out of capacity).
+    // Retrying would just create another pod that also can't be scheduled.
+    if (result.retryable === false) {
+      console.error(`[pool] Not retrying — failure is not retryable: ${result.reason}`);
+      return;
+    }
+
+    if (retries >= MAX_SLOT_RETRIES) {
+      console.error(`[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`);
+      return;
+    }
+    await addSlotAndWait(retries + 1);
   }
 }
+
+/**
+ * Fire-and-forget wrapper around addSlotAndWait().
+ * Starts provisioning a new slot in the background without blocking the caller.
+ * Used when replenishing the pool after a pod is claimed.
+ */
+function addSlot() {
+  addSlotAndWait().catch((err) =>
+    console.error("[pool] Unexpected error in background slot provisioning:", err?.message || err)
+  );
+}
+
+
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Initialize the pool. Call once at server startup.
- * Fills the pool up to POOL_SIZE in the background — does not block.
+ * Initialize the pool. Call once at server startup, and AWAIT it —
+ * this resolves only once POOL_SIZE pods are actually ready, so by the
+ * time your server starts accepting traffic there is at least one warm
+ * pod available.
+ *
+ * @returns {Promise<void>}
  */
-export function initPool() {
+export async function initPool() {
   const needed = POOL_SIZE - pool.length;
   console.log(`[pool] Initialising — pre-warming ${needed} pod(s)`);
-  for (let i = 0; i < needed; i++) {
-    addSlot();
-  }
+  await Promise.all(Array.from({ length: needed }, () => addSlotAndWait()));
+  console.log(`[pool] Ready — ${poolStats().ready}/${POOL_SIZE} warm pod(s) available`);
 }
 
 /**
@@ -156,7 +290,9 @@ export function initPool() {
  * is provisioned in the background to refill the pool.
  *
  * If no warm pod is available a fresh one is created on-demand and we
- * wait for it to become ready (fallback — slower path).
+ * wait for it to become ready (fallback — slower path). This pod is
+ * NOT added to the pool array — it belongs to the caller, not the pool,
+ * so it can never get stuck as a permanent "provisioning" ghost slot.
  *
  * @returns {Promise<{ sandboxId: string, previewUrl: string, fromPool: boolean }>}
  */
@@ -175,18 +311,18 @@ export async function claimPod() {
   // No warm pod ready — create one on-demand and wait for it (slow path)
   console.warn("[pool] No warm pod available — creating on-demand (slow path)");
   const sandboxId = uuid();
+  const previewUrl = `http://${sandboxId}.preview.localhost`;
+
   await Promise.all([createPode(sandboxId), createService(sandboxId)]);
 
-  // Wait for it to be ready (inline, since the user is waiting)
-  const tempSlot = { sandboxId, status: "provisioning", previewUrl: `http://${sandboxId}.preview.localhost` };
-  pool.push(tempSlot);
-  await watchUntilReadySync(sandboxId);
+  const result = await waitForPodReady(sandboxId);
+  if (!result.ok) {
+    // Clean up the failed pod+service so it doesn't become a ghost in k8s.
+    await cleanupK8sResources(sandboxId);
+    throw new Error(`On-demand pod ${sandboxId} failed to become ready: ${result.reason}`);
+  }
 
-  return {
-    sandboxId,
-    previewUrl: `http://${sandboxId}.preview.localhost`,
-    fromPool: false,
-  };
+  return { sandboxId, previewUrl, fromPool: false };
 }
 
 /**
@@ -199,29 +335,4 @@ export function poolStats() {
     provisioning: pool.filter((s) => s.status === "provisioning").length,
     poolSize: POOL_SIZE,
   };
-}
-
-/**
- * Synchronous-style wait for a specific sandboxId to become ready.
- * Used only on the slow fallback path in claimPod().
- */
-async function watchUntilReadySync(sandboxId) {
-  const podName = `sandbox-pod-${sandboxId}`;
-  const start = Date.now();
-
-  while (Date.now() - start < POD_TIMEOUT_MS) {
-    try {
-      const pod = await k8sCoreV1Api.readNamespacedPod({ name: podName, namespace: "default" });
-      const phase = pod?.status?.phase;
-      const containerStatuses = pod?.status?.containerStatuses || [];
-
-      if (phase === "Running" && containerStatuses.length > 0 && containerStatuses.every((c) => c.ready)) {
-        return; // ready
-      }
-    } catch (_) { /* keep polling */ }
-
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-  }
-
-  throw new Error(`Timed out waiting for on-demand pod ${sandboxId}`);
 }

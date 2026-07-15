@@ -1,17 +1,15 @@
 import express from "express";
 import morgan from "morgan";
 import { k8sCoreV1Api } from "./../kubernetes/config.js";
-import { v7 as uuid } from "uuid";
-import { initPool, claimPod, poolStats } from "./pool.js";
+import { claimPod, poolStats } from "./pool.js";
 
 const app = express();
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Start pre-warming the sandbox pod pool on server boot.
-// Runs entirely in the background — does not block startup.
-initPool();
+// Pool is initialised (and awaited) in server.js before the HTTP server
+// starts accepting traffic. See server.js for details.
 
 // Fatal container waiting reasons that mean the pod will never recover
 const FATAL_REASONS = new Set([

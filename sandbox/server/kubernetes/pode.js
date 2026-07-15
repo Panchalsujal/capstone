@@ -26,7 +26,7 @@ export async function createPode(sandboxId) {
       initContainers: [
         {
           name: "init-container",
-          image: "template:v2",
+          image: "template:latest",
           imagePullPolicy: "IfNotPresent",
           // Copies only source files — deliberately excludes node_modules.
           // node_modules live at /app/node_modules inside the template image and
@@ -46,7 +46,7 @@ export async function createPode(sandboxId) {
         {
           // Serves the Vite dev server (preview)
           name: "sandbox-container",
-          image: "template:v2",
+          image: "template:latest",
           imagePullPolicy: "IfNotPresent",
           ports: [
             {
@@ -75,6 +75,7 @@ export async function createPode(sandboxId) {
               path: "/",
               port: 5173,
             },
+            initialDelaySeconds: 5,
             failureThreshold: 120,
             periodSeconds: 1,
           },

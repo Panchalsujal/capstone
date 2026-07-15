@@ -32,18 +32,26 @@ spec:
               cpu: "250m"
               memory: "500Mi"
 
+          startupProbe:
+            httpGet:
+              path: /api/sandbox/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+
           livenessProbe:
             httpGet:
               path: /api/sandbox/health
               port: 3000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 2
             timeoutSeconds: 10
 
           readinessProbe:
             httpGet:
               path: /api/sandbox/health
               port: 3000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 2
             timeoutSeconds: 10
 
           ports:
