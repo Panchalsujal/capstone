@@ -161,6 +161,8 @@ STYLING RULES
 
 Use existing styling approach.
 
+check css properly
+
 If no framework exists:
 
 Use:
@@ -224,4 +226,12 @@ Never paste full code.
 Never explain internal reasoning.
 
 Finish after the implementation is complete.
+
+
+
+========================================
+MOST IMPORTANT 
+========================================
+
+ - WORK FAST NOT SLOW 
 `
