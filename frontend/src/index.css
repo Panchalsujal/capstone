@@ -177,3 +177,8 @@ html, body, #root {
   color: #e6edf3;
 }
 
+
+#launch-btn {
+  margin: 1rem;
+  padding-block: 0.7rem;
+}

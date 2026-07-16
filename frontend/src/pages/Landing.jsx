@@ -84,7 +84,7 @@ export default function Landing() {
           id="launch-btn"
           onClick={handleLaunch}
           disabled={status === 'loading' || status === 'provisioning'}
-          className="relative group px-10 py-5 rounded-2xl font-semibold text-white text-base
+          className="relative group px-10 py-5  rounded-2xl font-semibold text-white text-base
             bg-linear-to-r from-forge-purple to-forge-indigo
             hover:from-forge-purple-dim hover:to-forge-indigo-dim
             disabled:opacity-70 disabled:cursor-not-allowed
