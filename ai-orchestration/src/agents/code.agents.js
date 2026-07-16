@@ -32,7 +32,7 @@ const model = new ChatMistralAI({
   maxRetries: 2,
 
   // Match Express timeout
-  timeout: 60000,
+  timeout: 120000,
 });
 
 /**

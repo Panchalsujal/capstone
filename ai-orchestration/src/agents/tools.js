@@ -46,7 +46,7 @@ export function createTools(sandboxId) {
    * LIST FILES
    */
   const listFiles = tool(
-    async (config) => {
+    async (_, config) => {
       const writer = config.context?.writer ?? (() => {});
       writer("Listing files in project directory...\n");
       const start = Date.now();

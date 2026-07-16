@@ -4,7 +4,11 @@ import { createAgentForSandbox } from "../agents/code.agents.js";
 
 const agentRouter = express.Router();
 
-const AGENT_TIMEOUT = 60000;
+// Total wall-clock budget for one agent invocation.
+// Must be generous enough to cover: LLM call(s) + tool round-trips.
+// LangGraph's internal abort defaults to ~30 s, so we always pass our
+// own AbortSignal to override it.
+const AGENT_TIMEOUT = 120_000; // 120 s
 
 agentRouter.post("/invoke", async (req, res) => {
   const { message, sandboxId } = req.body;
@@ -44,6 +48,9 @@ agentRouter.post("/invoke", async (req, res) => {
     );
   };
 
+  // AbortController lets us pass a cancellation signal directly into
+  // LangGraph, overriding its internal ~30 s default timeout.
+  const controller = new AbortController();
   let timeout;
 
   try {
@@ -53,17 +60,21 @@ agentRouter.post("/invoke", async (req, res) => {
 
     console.log(`[${requestId}] Agent created`);
 
+    // Fire the abort signal first, THEN close the response.
     timeout = setTimeout(() => {
-      console.error(`[${requestId}] Agent timeout`);
+      console.error(`[${requestId}] Agent timeout after ${AGENT_TIMEOUT}ms`);
 
-      res.write(
-        `event: error\ndata: ${JSON.stringify({
-          success: false,
-          error: "Agent execution timeout",
-        })}\n\n`
-      );
+      controller.abort(); // cancels LangGraph graph execution
 
-      res.end();
+      if (!res.writableEnded) {
+        res.write(
+          `event: error\ndata: ${JSON.stringify({
+            success: false,
+            error: "Agent execution timeout",
+          })}\n\n`
+        );
+        res.end();
+      }
     }, AGENT_TIMEOUT);
 
     const stream = await agent.stream(
@@ -76,6 +87,7 @@ agentRouter.post("/invoke", async (req, res) => {
         ],
       },
       {
+        signal: controller.signal, // <-- key fix: override LangGraph's internal timeout
         context: {
           writer,
         },
