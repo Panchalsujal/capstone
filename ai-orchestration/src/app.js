@@ -4,180 +4,113 @@ import crypto from "crypto";
 
 import agentRouter from "./routes/agent.routes.js";
 
-
 const app = express();
-
-
 
 /**
  * Request ID Middleware
  */
 app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
 
-  req.requestId =
-    crypto.randomUUID();
-
-
-  res.setHeader(
-    "X-Request-ID",
-    req.requestId
-  );
-
+  res.setHeader("X-Request-ID", req.requestId);
 
   next();
-
 });
 
-
+/**
+ * CORS — allow requests from the Vite dev server and any sandbox preview origins
+ */
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 
 /**
  * Logging
  */
 app.use(
-  morgan(
-    (tokens, req, res) => {
-
-      return [
-        `[${req.requestId}]`,
-        tokens.method(req, res),
-        tokens.url(req, res),
-        tokens.status(req, res),
-        `${tokens["response-time"](req, res)} ms`,
-      ].join(" ");
-
-    }
-  )
+  morgan((tokens, req, res) => {
+    return [
+      `[${req.requestId}]`,
+      tokens.method(req, res),
+      tokens.url(req, res),
+      tokens.status(req, res),
+      `${tokens["response-time"](req, res)} ms`,
+    ].join(" ");
+  }),
 );
-
-
 
 /**
  * Body Parser
  */
 app.use(
   express.json({
-    limit:"2mb"
-  })
+    limit: "2mb",
+  }),
 );
-
 
 app.use(
   express.urlencoded({
-    extended:true,
-    limit:"2mb"
-  })
+    extended: true,
+    limit: "2mb",
+  }),
 );
-
-
-
-
 
 /**
  * Routes
  */
-app.use(
-  "/api/ai",
-  agentRouter
-);
-
-
-
-
+app.use("/api/ai", agentRouter);
 
 /**
  * Health Check
  */
-app.get(
-  "/api/status/healthz",
-  (req,res)=>{
+app.get("/api/status/healthz", (req, res) => {
+  res.status(200).json({
+    status: "ok",
 
-    res.status(200).json({
+    service: "ai-orchestration",
 
-      status:"ok",
+    uptime: process.uptime(),
 
-      service:
-        "ai-orchestration",
-
-      uptime:
-        process.uptime(),
-
-      timestamp:
-        new Date().toISOString()
-
-    });
-
-  }
-);
-
-
-
-
+    timestamp: new Date().toISOString(),
+  });
+});
 
 /**
  * 404 Handler
  */
-app.use(
-  (req,res)=>{
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
 
-    res.status(404).json({
+    error: "Route not found",
 
-      success:false,
-
-      error:
-        "Route not found",
-
-      path:
-        req.originalUrl
-
-    });
-
-  }
-);
-
-
-
-
+    path: req.originalUrl,
+  });
+});
 
 /**
  * Global Error Handler
  */
-app.use(
-  (err,req,res,next)=>{
+app.use((err, req, res, next) => {
+  console.error("\n======================================");
 
+  console.error(`[${req.requestId}] Application Error`);
 
-    console.error(
-      "\n======================================"
-    );
+  console.error(err);
 
-    console.error(
-      `[${req.requestId}] Application Error`
-    );
+  console.error("======================================\n");
 
-    console.error(err);
+  res.status(500).json({
+    success: false,
 
+    error: "Internal server error",
 
-    console.error(
-      "======================================\n"
-    );
-
-
-
-    res.status(500).json({
-
-      success:false,
-
-      error:
-        "Internal server error",
-
-      requestId:
-        req.requestId
-
-    });
-
-
-  }
-);
-
-
+    requestId: req.requestId,
+  });
+});
 
 export default app;
