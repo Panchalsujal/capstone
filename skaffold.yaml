@@ -42,6 +42,7 @@ build:
           - "src/**"
 manifests:
   rawYaml:
+    - k8s/secrets.yml
     - k8s/rbac-serviceaccount.yml # Must come first — sandbox-deployment needs this SA
     - k8s/rbac-role.yml
     - k8s/rbac-rolebinding.yml
