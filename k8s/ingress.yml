@@ -55,6 +55,17 @@ spec:
                 port:
                   number: 80
 
+    - host: "localhost"
+      http:
+        paths:
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 80
+
           - path: /api/ai
             pathType: Prefix
             backend:

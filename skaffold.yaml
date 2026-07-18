@@ -33,9 +33,16 @@ build:
       docker:
         dockerfile: dockerfile
 
+    - image: auth
+      context: auth
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - "src/**"
 manifests:
   rawYaml:
-    - k8s/rbac-serviceaccount.yml  # Must come first — sandbox-deployment needs this SA
+    - k8s/rbac-serviceaccount.yml # Must come first — sandbox-deployment needs this SA
     - k8s/rbac-role.yml
     - k8s/rbac-rolebinding.yml
     - k8s/ai-deployment.yml
@@ -45,3 +52,5 @@ manifests:
     - k8s/router-service.yml
     - k8s/sandbox-deployment.yml
     - k8s/sandbox-service.yml
+    - k8s/auth-deployment.yml
+    - k8s/auth-service.yml
