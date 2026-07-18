@@ -2,6 +2,7 @@ import express from "express";
 import http from "http";
 import morgan from "morgan";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import {refreshTTL} from './config/redis.js'
 
 const app = express();
 const server = http.createServer(app);
@@ -66,33 +67,46 @@ function getProxy(sandboxId, port) {
   return proxy;
 }
 
-app.use((req, res, next) => {
-  const host = req.headers.host;
+app.use(async (req, res, next) => {
+  try {
+    const host = req.headers.host;
 
-  if (!host) {
-    return res.status(400).send("Host header missing");
+    if (!host) {
+      return res.status(400).send("Host header missing");
+    }
+
+    const hostname = host.split(":")[0];
+    const parts = hostname.split(".");
+
+    if (parts.length < 3) {
+      return res.status(404).send("Invalid Host");
+    }
+
+    const sandboxId = parts[0];
+    const service = parts[1];
+
+    try {
+      await refreshTTL(sandboxId);
+    } catch (err) {
+      console.error("Failed to refresh TTL:", err.message);
+    }
+
+    if (service === "preview") {
+      return getProxy(sandboxId, 80)(req, res, next);
+    }
+
+    if (service === "agent") {
+      return getProxy(sandboxId, 3000)(req, res, next);
+    }
+
+    return res.status(404).send("Unknown service");
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
-
-  const hostname = host.split(":")[0];
-
-  const parts = hostname.split(".");
-
-  if (parts.length < 3) {
-    return res.status(404).send("Invalid Host");
-  }
-
-  const sandboxId = parts[0];
-  const service = parts[1];
-
-  if (service === "preview") {
-    return getProxy(sandboxId, 80)(req, res, next);
-  }
-
-  if (service === "agent") {
-    return getProxy(sandboxId, 3000)(req, res, next);
-  }
-
-  return res.status(404).send("Unknown service");
 });
 
 server.on("upgrade", (req, socket, head) => {

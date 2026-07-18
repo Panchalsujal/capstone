@@ -19,6 +19,7 @@ import { createService } from "./../kubernetes/service.js";
 import { createPode } from "./../kubernetes/pode.js";
 import { k8sCoreV1Api } from "./../kubernetes/config.js";
 import { v7 as uuid } from "uuid";
+import {createSandboxKey} from  "./config/redis.js"
 
 // How long a pod is allowed to stay Pending without being assigned to a node
 // before we treat it as an unschedulable failure (ms).
@@ -207,7 +208,7 @@ async function addSlotAndWait(retries = 0) {
   console.log(`[pool] Provisioning warm pod ${sandboxId} (pool size: ${pool.length}, attempt: ${retries + 1}/${MAX_SLOT_RETRIES + 1})`);
 
   try {
-    await Promise.all([createPode(sandboxId), createService(sandboxId)]);
+    await Promise.all([createPode(sandboxId), createService(sandboxId),createSandboxKey(sandboxId)]);
   } catch (err) {
     console.error(`[pool] Failed to create pod ${sandboxId}:`, err?.body?.message || err?.message);
     const idx = pool.indexOf(slot);

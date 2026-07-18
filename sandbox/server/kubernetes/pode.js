@@ -32,7 +32,11 @@ export async function createPode(sandboxId) {
           // node_modules live at /app/node_modules inside the template image and
           // are symlinked to /workspace/node_modules. Copying them would be
           // 100-300 MB of data, making sandbox start very slow.
-          command: ["sh", "-c", "find /workspace -mindepth 1 -maxdepth 1 ! -name node_modules -exec cp -r {} /seed/ \\;"],
+          command: [
+            "sh",
+            "-c",
+            "find /workspace -mindepth 1 -maxdepth 1 ! -name node_modules -exec cp -r {} /seed/ \\;",
+          ],
           volumeMounts: [
             {
               name: "workspace-volume",
@@ -142,3 +146,13 @@ export async function createPode(sandboxId) {
 
   return response;
 }
+
+export async function deletePod(sandboxId) {
+  const responce = await k8sCoreV1Api.deleteNamespacedPod({
+    namespace: "default",
+    name: `sandbox-pod-${sandboxId}`,
+  });
+
+  responce;
+}
+
