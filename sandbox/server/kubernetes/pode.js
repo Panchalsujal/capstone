@@ -153,6 +153,6 @@ export async function deletePod(sandboxId) {
     name: `sandbox-pod-${sandboxId}`,
   });
 
-  responce;
+ return responce;
 }
 

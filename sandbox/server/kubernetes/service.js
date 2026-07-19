@@ -46,5 +46,5 @@ export async function deleteService(sandboxId) {
     namespace: "default",
     name: `sandbox-svc-${sandboxId}`,
   });
-  responce;
+ return responce;
 }
