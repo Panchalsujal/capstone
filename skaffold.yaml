@@ -13,6 +13,22 @@ build:
         infer:
           - "src/**"
 
+    - image: auth
+      context: auth
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - "src/**"
+
+    - image: notification
+      context: notification
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - "src/**"
+          
     - image: agent
       context: sandbox/agent
       docker:
@@ -33,16 +49,12 @@ build:
       docker:
         dockerfile: dockerfile
 
-    - image: auth
-      context: auth
-      docker:
-        dockerfile: dockerfile
-      sync:
-        infer:
-          - "src/**"
 manifests:
   rawYaml:
-    - k8s/secrets.yml
+    - k8s/secret-database.yml
+    - k8s/secret-jwt.yml
+    - k8s/secret-google.yml
+    - k8s/secret-ai.yml
     - k8s/rbac-serviceaccount.yml # Must come first — sandbox-deployment needs this SA
     - k8s/rbac-role.yml
     - k8s/rbac-rolebinding.yml
@@ -55,3 +67,5 @@ manifests:
     - k8s/sandbox-service.yml
     - k8s/auth-deployment.yml
     - k8s/auth-service.yml
+    - k8s/notification-deployment.yml
+    - k8s/notification-service.yml
