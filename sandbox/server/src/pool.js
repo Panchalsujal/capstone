@@ -19,7 +19,7 @@ import { createService } from "./../kubernetes/service.js";
 import { createPode } from "./../kubernetes/pode.js";
 import { k8sCoreV1Api } from "./../kubernetes/config.js";
 import { v7 as uuid } from "uuid";
-import {createSandboxKey} from  "./config/redis.js"
+import { createSandboxKey } from "./config/redis.js";
 
 // How long a pod is allowed to stay Pending without being assigned to a node
 // before we treat it as an unschedulable failure (ms).
@@ -75,7 +75,10 @@ async function cleanupK8sResources(sandboxId) {
       .then(() => console.log(`[pool] Deleted pod ${podName}`))
       .catch((err) => {
         if (err?.body?.code !== 404) {
-          console.warn(`[pool] Could not delete pod ${podName}:`, err?.body?.message || err?.message);
+          console.warn(
+            `[pool] Could not delete pod ${podName}:`,
+            err?.body?.message || err?.message,
+          );
         }
       }),
     k8sCoreV1Api
@@ -83,7 +86,10 @@ async function cleanupK8sResources(sandboxId) {
       .then(() => console.log(`[pool] Deleted service ${svcName}`))
       .catch((err) => {
         if (err?.body?.code !== 404) {
-          console.warn(`[pool] Could not delete service ${svcName}:`, err?.body?.message || err?.message);
+          console.warn(
+            `[pool] Could not delete service ${svcName}:`,
+            err?.body?.message || err?.message,
+          );
         }
       }),
   ]);
@@ -117,7 +123,11 @@ async function waitForPodReady(sandboxId) {
       const phase = pod?.status?.phase;
 
       if (phase === "Failed" || phase === "Unknown") {
-        return { ok: false, reason: `pod entered phase ${phase}`, retryable: false };
+        return {
+          ok: false,
+          reason: `pod entered phase ${phase}`,
+          retryable: false,
+        };
       }
 
       const initStatuses = pod?.status?.initContainerStatuses || [];
@@ -126,14 +136,19 @@ async function waitForPodReady(sandboxId) {
       for (const c of [...initStatuses, ...containerStatuses]) {
         const reason = c?.state?.waiting?.reason;
         if (FATAL_REASONS.has(reason)) {
-          return { ok: false, reason: `container ${c.name} fatal: ${reason}`, retryable: false };
+          return {
+            ok: false,
+            reason: `container ${c.name} fatal: ${reason}`,
+            retryable: false,
+          };
         }
       }
 
       if (phase === "Running") {
         pendingSince = null; // pod made it past Pending — reset the stuck-pending timer
         const allReady =
-          containerStatuses.length > 0 && containerStatuses.every((c) => c.ready);
+          containerStatuses.length > 0 &&
+          containerStatuses.every((c) => c.ready);
         if (allReady) {
           return { ok: true };
         }
@@ -163,7 +178,7 @@ async function waitForPodReady(sandboxId) {
       if (err?.body?.code !== 404) {
         console.error(
           `[pool] Error polling ${sandboxId}:`,
-          err?.body?.message || err?.message || err
+          err?.body?.message || err?.message || err,
         );
       }
     }
@@ -171,7 +186,11 @@ async function waitForPodReady(sandboxId) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 
-  return { ok: false, reason: "timed out waiting for readiness", retryable: false };
+  return {
+    ok: false,
+    reason: "timed out waiting for readiness",
+    retryable: false,
+  };
 }
 
 /**
@@ -192,7 +211,9 @@ async function addSlotAndWait(retries = 0) {
   // Claimed pods are spliced out of the pool[] array immediately when claimed,
   // so pool.length is the accurate count of active (provisioning + ready) slots.
   if (pool.length >= POOL_SIZE) {
-    console.log(`[pool] Skipping slot creation — already ${pool.length} pod(s) in pool (limit ${POOL_SIZE})`);
+    console.log(
+      `[pool] Skipping slot creation — already ${pool.length} pod(s) in pool (limit ${POOL_SIZE})`,
+    );
     return;
   }
 
@@ -205,19 +226,26 @@ async function addSlotAndWait(retries = 0) {
   };
 
   pool.push(slot);
-  console.log(`[pool] Provisioning warm pod ${sandboxId} (pool size: ${pool.length}, attempt: ${retries + 1}/${MAX_SLOT_RETRIES + 1})`);
+  console.log(
+    `[pool] Provisioning warm pod ${sandboxId} (pool size: ${pool.length}, attempt: ${retries + 1}/${MAX_SLOT_RETRIES + 1})`,
+  );
 
   try {
-    await Promise.all([createPode(sandboxId), createService(sandboxId),createSandboxKey(sandboxId)]);
+    await Promise.all([createPode(sandboxId), createService(sandboxId)]);
   } catch (err) {
-    console.error(`[pool] Failed to create pod ${sandboxId}:`, err?.body?.message || err?.message);
+    console.error(
+      `[pool] Failed to create pod ${sandboxId}:`,
+      err?.body?.message || err?.message,
+    );
     const idx = pool.indexOf(slot);
     if (idx !== -1) pool.splice(idx, 1);
     // Clean up any k8s resources that may have been partially created
     await cleanupK8sResources(sandboxId);
 
     if (retries >= MAX_SLOT_RETRIES) {
-      console.error(`[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`);
+      console.error(
+        `[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`,
+      );
       return;
     }
     await addSlotAndWait(retries + 1);
@@ -229,7 +257,9 @@ async function addSlotAndWait(retries = 0) {
 
   if (result.ok) {
     slot.status = "ready";
-    console.log(`[pool] Pod ${sandboxId} is ready (${Math.round((Date.now() - start) / 1000)}s)`);
+    console.log(
+      `[pool] Pod ${sandboxId} is ready (${Math.round((Date.now() - start) / 1000)}s)`,
+    );
   } else {
     console.warn(`[pool] Dropping pod ${sandboxId}: ${result.reason}`);
     const idx = pool.indexOf(slot);
@@ -242,12 +272,16 @@ async function addSlotAndWait(retries = 0) {
     // Don't retry on non-retryable failures (e.g. cluster out of capacity).
     // Retrying would just create another pod that also can't be scheduled.
     if (result.retryable === false) {
-      console.error(`[pool] Not retrying — failure is not retryable: ${result.reason}`);
+      console.error(
+        `[pool] Not retrying — failure is not retryable: ${result.reason}`,
+      );
       return;
     }
 
     if (retries >= MAX_SLOT_RETRIES) {
-      console.error(`[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`);
+      console.error(
+        `[pool] Max retries (${MAX_SLOT_RETRIES}) reached — giving up on this slot`,
+      );
       return;
     }
     await addSlotAndWait(retries + 1);
@@ -261,11 +295,12 @@ async function addSlotAndWait(retries = 0) {
  */
 function addSlot() {
   addSlotAndWait().catch((err) =>
-    console.error("[pool] Unexpected error in background slot provisioning:", err?.message || err)
+    console.error(
+      "[pool] Unexpected error in background slot provisioning:",
+      err?.message || err,
+    ),
   );
 }
-
-
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -281,7 +316,9 @@ export async function initPool() {
   const needed = POOL_SIZE - pool.length;
   console.log(`[pool] Initialising — pre-warming ${needed} pod(s)`);
   await Promise.all(Array.from({ length: needed }, () => addSlotAndWait()));
-  console.log(`[pool] Ready — ${poolStats().ready}/${POOL_SIZE} warm pod(s) available`);
+  console.log(
+    `[pool] Ready — ${poolStats().ready}/${POOL_SIZE} warm pod(s) available`,
+  );
 }
 
 /**
@@ -298,32 +335,49 @@ export async function initPool() {
  * @returns {Promise<{ sandboxId: string, previewUrl: string, fromPool: boolean }>}
  */
 export async function claimPod() {
-  // Try to grab a ready slot from the pool
   const readyIdx = pool.findIndex((s) => s.status === "ready");
 
   if (readyIdx !== -1) {
     const slot = pool.splice(readyIdx, 1)[0];
     slot.status = "claimed";
-    console.log(`[pool] Claimed warm pod ${slot.sandboxId} — replenishing pool`);
-    addSlot(); // replenish in background
-    return { sandboxId: slot.sandboxId, previewUrl: slot.previewUrl, fromPool: true };
+
+    await createSandboxKey(slot.sandboxId);
+
+    console.log(
+      `[pool] Claimed warm pod ${slot.sandboxId} — replenishing pool`,
+    );
+    addSlot();
+
+    return {
+      sandboxId: slot.sandboxId,
+      previewUrl: slot.previewUrl,
+      fromPool: true,
+    };
   }
 
-  // No warm pod ready — create one on-demand and wait for it (slow path)
   console.warn("[pool] No warm pod available — creating on-demand (slow path)");
+
   const sandboxId = uuid();
   const previewUrl = `http://${sandboxId}.preview.localhost`;
 
   await Promise.all([createPode(sandboxId), createService(sandboxId)]);
 
   const result = await waitForPodReady(sandboxId);
+
   if (!result.ok) {
-    // Clean up the failed pod+service so it doesn't become a ghost in k8s.
     await cleanupK8sResources(sandboxId);
-    throw new Error(`On-demand pod ${sandboxId} failed to become ready: ${result.reason}`);
+    throw new Error(
+      `On-demand pod ${sandboxId} failed to become ready: ${result.reason}`,
+    );
   }
 
-  return { sandboxId, previewUrl, fromPool: false };
+  await createSandboxKey(sandboxId);
+
+  return {
+    sandboxId,
+    previewUrl,
+    fromPool: false,
+  };
 }
 
 /**
