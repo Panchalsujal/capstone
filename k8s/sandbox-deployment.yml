@@ -18,7 +18,7 @@ spec:
         app: sandbox-server
 
     spec:
-      serviceAccountName: resource-manager  # needs rbac.yml deployed first
+      serviceAccountName: resource-manager # needs rbac.yml deployed first
       containers:
         - name: main-sandbox-container
           image: sandbox:latest
@@ -51,7 +51,17 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: database
-                  key: REDIS_URL 
+                  key: REDIS_URL
+            - name: SANDBOX
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: SANDBOX
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt
+                  key: JWT_SECRET
           readinessProbe:
             httpGet:
               path: /api/sandbox/health

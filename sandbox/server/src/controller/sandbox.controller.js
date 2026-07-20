@@ -1,12 +1,11 @@
 import { k8sCoreV1Api } from "../../kubernetes/config.js";
 import { claimPod, poolStats } from "../pool.js";
-import {checkPodStatus} from "../../middleware/sandbox.middleware.js"
+import { checkPodStatus } from "../middleware/sandbox.middleware.js";
+import projectModel from "../model/sandox.model.js";
 
-
-
- /**
-  *  for pod health check 
-  */
+/**
+ *  for pod health check
+ */
 export function checkHealth(req, res) {
   res.status(200).json({ message: "Sandbox Api is healthy", status: "ok" });
 }
@@ -15,22 +14,29 @@ export function checkHealth(req, res) {
  *  for check pool is start or not for creating a pre build pods
  */
 
-export async function poolStartCheck(req,res) {
-
-
+export async function poolStartCheck(req, res) {
   res.status(200).json(poolStats());
-
-    
 }
 
 /**
  *  create a sandbox in this we create pods and deployments
  */
 
-
-export async function sandboxStartasync (req, res){
+export async function sandboxStartasync(req, res) {
   try {
     const { sandboxId, previewUrl, fromPool } = await claimPod();
+    const projectId = req.user.projectId;
+
+    const project = await projectModel.findOne({
+      _id: projectId,
+      user: req.user._id,
+    });
+
+    if (!project) {
+      return res.status(401).json({
+        message: "Authentication token is missing",
+      });
+    }
 
     return res.status(202).json({
       message: fromPool
@@ -54,13 +60,11 @@ export async function sandboxStartasync (req, res){
   }
 }
 
-
 /**
- *  check status of pods and sandbox 
+ *  check status of pods and sandbox
  */
 
-
-export async function checkSandboxStatusasync (req, res){
+export async function checkSandboxStatusasync(req, res) {
   const { sandboxId } = req.params;
 
   try {
@@ -92,7 +96,7 @@ export async function checkSandboxStatusasync (req, res){
 
     console.error(
       "Failed to read sandbox status:",
-      err?.body || err?.message || err
+      err?.body || err?.message || err,
     );
     return res.status(500).json({
       message: "Failed to read sandbox status",
@@ -100,4 +104,38 @@ export async function checkSandboxStatusasync (req, res){
       success: false,
     });
   }
+}
+
+/**
+ *  create a project
+ */
+
+export async function projectController(req, res) {
+  const { title } = req.body;
+
+  const newProject = new projectModel({
+    user: req.user.id,
+    title,
+  });
+
+  await projectModel.save();
+
+  return res.status(201).json({
+    message: "Project created Successfully",
+    success: true,
+    project: newProject,
+  });
+}
+
+/**
+ *
+ */
+
+export async function projectsController(req, res) {
+  const projects = await projectModel.find({ user: req.user.id });
+
+  return res.status(401).json({
+    message: "Projects retrieved successfully",
+    projects,
+  });
 }

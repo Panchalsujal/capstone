@@ -1,4 +1,4 @@
-import { k8sCoreV1Api } from "../kubernetes/config.js";
+import { k8sCoreV1Api } from "../../kubernetes/config.js";
 
 
 

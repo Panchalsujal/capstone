@@ -1,11 +1,29 @@
 import { Router } from "express";
+import { authMiddleware } from "../middleware/auth.middleware.js";
 const router = Router();
 import {
   checkHealth,
   poolStartCheck,
   sandboxStartasync,
   checkSandboxStatusasync,
+  projectController
 } from "../controller/sandbox.controller.js";
+
+
+/**
+ *  create a project  
+ */
+
+
+router.post("/project",authMiddleware,projectController)
+
+/**
+ *  
+ */
+
+router.get("/projects",authMiddleware,projectsController)
+
+
 
 /**
  * Single-shot readiness check — NO polling loop.
@@ -33,7 +51,7 @@ router.get("/pool-stats", poolStartCheck);
  *
  * In both cases the response is fast — the slow work happens in the background.
  */
-router.post("/start", sandboxStartasync);
+router.post("/start", authMiddleware, sandboxStartasync);
 
 /**
  * GET /api/sandbox/status/:sandboxId
@@ -47,6 +65,6 @@ router.post("/start", sandboxStartasync);
  *   "ready"        — all containers running and healthy
  *   "failed"       — pod entered an unrecoverable state
  */
-router.get("/status/:sandboxId", checkSandboxStatusasync);
+router.get("/status/:sandboxId", authMiddleware, checkSandboxStatusasync);
 
 export default router;
