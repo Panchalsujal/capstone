@@ -10,7 +10,7 @@ export default function Landing() {
     setStatus('loading')
     setError('')
     try {
-      const res = await fetch('/api/sandbox/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const res = await fetch('/api/sandbox/start', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
       const data = await res.json()
       if (!data.success) throw new Error(data.error || 'Failed to start sandbox')
 
@@ -31,7 +31,7 @@ export default function Landing() {
   async function pollStatus(sandboxId, previewUrl) {
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 2000))
-      const res = await fetch(`/api/sandbox/status/${sandboxId}`)
+      const res = await fetch(`/api/sandbox/status/${sandboxId}`, { credentials: 'include' })
       const data = await res.json()
       if (data.status === 'ready') {
         navigate(`/dashboard/${sandboxId}`, { state: { previewUrl: data.previewUrl || previewUrl } })

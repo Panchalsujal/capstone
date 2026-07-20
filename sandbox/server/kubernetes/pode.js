@@ -1,6 +1,6 @@
 import { k8sCoreV1Api } from "./config.js";
 
-export async function createPode(sandboxId) {
+export async function createPode(sandboxId, projectId) {
   const podManifest = {
     apiVersion: "v1",
     kind: "Pod",
@@ -135,6 +135,74 @@ export async function createPode(sandboxId) {
             },
           ],
         },
+
+        {
+          image: "sync-agent",
+          imagePullPolicy: "Always",
+          name: "sync-agent-container",
+          ports: [{ containerPort: 4000, name: "http" }],
+          resources: {
+            limits: { cpu: "500m", memory: "1Gi" },
+            requests: { cpu: "250m", memory: "500Mi" },
+          },
+          readinessProbe: {
+            httpGet: {
+              path: "/health",
+              port: 4000,
+            },
+            initialDelaySeconds: 2,
+            periodSeconds: 1,
+            failureThreshold: 30,
+          },
+          volumeMounts: [
+            {
+              name: "workspace-volume",
+              mountPath: "/workspace",
+            },
+          ],
+          // Only inject PROJECT_ID when known (on-demand pods).
+          // Warm pool pods omit it — the sync-agent starts in idle mode and
+          // is activated via POST /activate once the pod is claimed.
+          env: [
+            ...(projectId ? [{ name: "PROJECT_ID", value: projectId }] : []),
+            {
+              name: "AWS_ACCESS_KEY_ID",
+              valueFrom: {
+                secretKeyRef: {
+                  name: "aws",
+                  key: "AWS_ACCESS_KEY_ID",
+                },
+              },
+            },
+            {
+              name: "AWS_SECRET_ACCESS_KEY",
+              valueFrom: {
+                secretKeyRef: {
+                  name: "aws",
+                  key: "AWS_SECRET_ACCESS_KEY",
+                },
+              },
+            },
+            {
+              name: "AWS_REGION",
+              valueFrom: {
+                secretKeyRef: {
+                  name: "aws",
+                  key: "AWS_REGION",
+                },
+              },
+            },
+            {
+              name: "BUCKET_NAME",
+              valueFrom: {
+                secretKeyRef: {
+                  name: "aws",
+                  key: "BUCKET_NAME",
+                },
+              },
+            },
+          ],
+        },
       ],
     },
   };
@@ -153,6 +221,5 @@ export async function deletePod(sandboxId) {
     name: `sandbox-pod-${sandboxId}`,
   });
 
- return responce;
+  return responce;
 }
-

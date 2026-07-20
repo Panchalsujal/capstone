@@ -24,25 +24,30 @@ export async function poolStartCheck(req, res) {
 
 export async function sandboxStartasync(req, res) {
   try {
-    const { sandboxId, previewUrl, fromPool } = await claimPod();
-    const projectId = req.user.projectId;
+    const projectId = req.body?.projectId;
 
-    const project = await projectModel.findOne({
-      _id: projectId,
-      user: req.user._id,
-    });
-
-    if (!project) {
-      return res.status(401).json({
-        message: "Authentication token is missing",
+    if (projectId) {
+      const project = await projectModel.findOne({
+        _id: projectId,
+        user: req.user.id,
       });
+
+      if (!project) {
+        return res.status(404).json({
+          message: "Project not found",
+          success: false,
+        });
+      }
     }
+
+    const { sandboxId, previewUrl, fromPool } = await claimPod(projectId);
 
     return res.status(202).json({
       message: fromPool
         ? "Sandbox ready (served from warm pool)"
         : "Sandbox provisioning started",
       sandboxId,
+      projectId: projectId || null,
       // If served from pool the pod is already ready; client can use previewUrl now.
       // If on-demand, client should poll the status endpoint.
       status: fromPool ? "ready" : "provisioning",
@@ -134,8 +139,9 @@ export async function projectController(req, res) {
 export async function projectsController(req, res) {
   const projects = await projectModel.find({ user: req.user.id });
 
-  return res.status(401).json({
+  return res.status(200).json({
     message: "Projects retrieved successfully",
+    success: true,
     projects,
   });
 }

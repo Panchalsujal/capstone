@@ -32,8 +32,8 @@ export const googleAuthController = async (req, res) => {
     // Set token in cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: false,      // false for http://localhost dev environment
+      sameSite: "lax",    // "lax" works over HTTP; "none" requires HTTPS + secure:true
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     

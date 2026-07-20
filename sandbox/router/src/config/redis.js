@@ -14,7 +14,7 @@ export async function refreshTTL(sandboxId) {
   try {
     const key = `sandbox:${sandboxId}`;
 
-    const updated = await redis.expire(key, 120);
+    const updated = await redis.expire(key, 60*60);
 
     if (!updated) {
       console.warn(`Redis key not found: ${key}`);

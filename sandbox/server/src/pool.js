@@ -20,6 +20,7 @@ import { createPode } from "./../kubernetes/pode.js";
 import { k8sCoreV1Api } from "./../kubernetes/config.js";
 import { v7 as uuid } from "uuid";
 import { createSandboxKey } from "./config/redis.js";
+import http from "http";
 
 // How long a pod is allowed to stay Pending without being assigned to a node
 // before we treat it as an unschedulable failure (ms).
@@ -55,6 +56,59 @@ const FATAL_REASONS = new Set([
 
 /** @type {PoolSlot[]} */
 const pool = [];
+
+// ─── Sync-agent activation ──────────────────────────────────────────────────
+
+/**
+ * After a warm pod is claimed, activate its sync-agent by POSTing the
+ * projectId to the sidecar's HTTP server. The sync-agent starts in idle
+ * mode (no PROJECT_ID) and waits for this call before syncing files.
+ *
+ * @param {string} sandboxId
+ * @param {string} projectId
+ */
+async function activateSyncAgent(sandboxId, projectId) {
+  // The sync-agent listens on port 4000 inside the pod. We reach it via the
+  // pod's DNS name (pod IP is not stable, but the pod name is).
+  // In-cluster: <pod-name>.<namespace>.pod.cluster.local doesn't work reliably;
+  // use the service name which routes to the correct pod via label selector.
+  // The service exposes agent on 3000, but sync-agent port 4000 is NOT in the
+  // service — so we must use the pod IP directly.
+  try {
+    const pod = await k8sCoreV1Api.readNamespacedPod({
+      name: `sandbox-pod-${sandboxId}`,
+      namespace: "default",
+    });
+    const podIP = pod?.status?.podIP;
+    if (!podIP) {
+      console.warn(`[pool] Could not get pod IP for ${sandboxId} — sync-agent not activated`);
+      return;
+    }
+
+    const body = JSON.stringify({ projectId });
+    await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: podIP,
+          port: 4000,
+          path: "/activate",
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", resolve);
+        },
+      );
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
+    console.log(`[pool] Activated sync-agent for pod ${sandboxId} with projectId ${projectId}`);
+  } catch (err) {
+    console.error(`[pool] Failed to activate sync-agent for ${sandboxId}:`, err?.message || err);
+  }
+}
 
 // ─── Kubernetes cleanup helpers ──────────────────────────────────────────────
 
@@ -334,7 +388,9 @@ export async function initPool() {
  *
  * @returns {Promise<{ sandboxId: string, previewUrl: string, fromPool: boolean }>}
  */
-export async function claimPod() {
+export async function claimPod(projectId) {
+  console.log(projectId);
+  
   const readyIdx = pool.findIndex((s) => s.status === "ready");
 
   if (readyIdx !== -1) {
@@ -348,6 +404,13 @@ export async function claimPod() {
     );
     addSlot();
 
+    // Activate the sync-agent sidecar now that we know the projectId.
+    // Warm pods start without PROJECT_ID; this call tells the agent to begin
+    // downloading from S3 and watching for file changes.
+    activateSyncAgent(slot.sandboxId, projectId).catch((err) =>
+      console.error(`[pool] sync-agent activation error:`, err?.message || err),
+    );
+    
     return {
       sandboxId: slot.sandboxId,
       previewUrl: slot.previewUrl,
@@ -360,7 +423,7 @@ export async function claimPod() {
   const sandboxId = uuid();
   const previewUrl = `http://${sandboxId}.preview.localhost`;
 
-  await Promise.all([createPode(sandboxId), createService(sandboxId)]);
+  await Promise.all([createPode(sandboxId,projectId), createService(sandboxId)]);
 
   const result = await waitForPodReady(sandboxId);
 

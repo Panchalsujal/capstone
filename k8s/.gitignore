@@ -2,4 +2,5 @@ secret-database.yml
 secret-ai.yml
 secret-google.yml
 secret-jwt.yml
+secret-aws.yml
 secrets.yml

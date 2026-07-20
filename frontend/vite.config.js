@@ -9,6 +9,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost',
         changeOrigin: true,
+        secure: false,
+        cookieDomainRewrite: 'localhost',   // rewrite cookie domain so browser keeps it
       }
     }
   }

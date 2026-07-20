@@ -34,6 +34,11 @@ build:
       docker:
         dockerfile: dockerfile
 
+    - image: sync-agent
+      context: sandbox/sync-agent
+      docker:
+        dockerfile: dockerfile
+
     - image: sandbox
       context: sandbox/server
       docker:
@@ -52,6 +57,7 @@ build:
 manifests:
   rawYaml:
     - k8s/secret-database.yml
+    - k8s/secret-aws.yml
     - k8s/secret-jwt.yml
     - k8s/secret-google.yml
     - k8s/secret-ai.yml
