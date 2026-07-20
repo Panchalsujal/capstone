@@ -118,7 +118,7 @@ export async function projectController(req, res) {
     title,
   });
 
-  await projectModel.save();
+  await newProject.save();
 
   return res.status(201).json({
     message: "Project created Successfully",
