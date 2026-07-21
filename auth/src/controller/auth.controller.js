@@ -43,3 +43,33 @@ export const googleAuthController = async (req, res) => {
     res.redirect("/");
   }
 };
+
+/**
+ * GET /api/auth/me
+ * Returns the currently authenticated user (read from JWT cookie)
+ */
+export const meController = async (req, res) => {
+  try {
+    const token = req.cookies?.token;
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Not authenticated" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ success: false, message: "Invalid or expired token" });
+    }
+
+    const user = await userModel.findById(decoded.id).select("_id name email avatar");
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({ success: true, user });
+  } catch (err) {
+    console.error("Error in /me:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
