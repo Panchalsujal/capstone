@@ -13,7 +13,7 @@ export default function Dashboard() {
   const fetchProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
-      const res = await fetch('/api/sandbox/projects', { credentials: 'include' })
+      const res = await fetch('api.brohsop.in/api/sandbox/projects', { credentials: 'include' })
       const data = await res.json()
       if (data.success) setProjects(data.projects)
     } catch { /* silently ignore */ } finally {
