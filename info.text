@@ -1,0 +1,20 @@
+aws acm describe-certificate --certificate-arn  "arn:aws:acm:ap-southeast-1:155149245210:certificate/52fe2aa5-4d30-4bfd-90ba-257d5e2d311f" --region ap-southeast-1 --query "Certificate.Status"
+
+
+aws s3api put-public-access-block --bucket cryboy-frontend --public-access-block-configuration "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false"
+
+aws s3 website s3://brohsop-frontend --index-document index.html--error-document index.html
+
+
+aws s3api put-bucket-policy 
+--bucket brohsop-frontend 
+--policy '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::brohsop-frontend/*"
+    }]
+  }'

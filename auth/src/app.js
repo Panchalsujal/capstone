@@ -23,13 +23,12 @@ passport.use(new GoogleStrategy({
 }));
 
 app.set('trust proxy', 1);
-app.get("/_status/healthz", (req, res) => {
-    res.status(200).json({ status: 'ok' });
-});
 
-app.get("/_status/readyz", (req, res) => {
-    res.status(200).json({ status: 'ready' });
-});
+
+// Top-level health endpoints — must be registered BEFORE /api/auth
+// so K8s probes hitting /_status/healthz on port 3000 get a 200 directly
+app.get('/_status/healthz', (_req, res) => res.status(200).json({ status: 'ok' }));
+app.get('/_status/readyz',  (_req, res) => res.status(200).json({ status: 'ready' }));
 
 app.use('/api/auth', authRoutes);
 

@@ -7,15 +7,12 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    # proxy-http-version 1.1 is enough for WebSocket/HMR — nginx ingress handles
-    # the Upgrade + Connection headers automatically in all modern versions
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    # Explicitly enable WebSocket support for Socket.IO and Vite HMR
     nginx.ingress.kubernetes.io/enable-websockets: "true"
     nginx.ingress.kubernetes.io/affinity: "cookie"
     nginx.ingress.kubernetes.io/session-cookie-name: "route"
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "http://localhost:5173"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://brohsop.in"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "*"
     nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
@@ -24,8 +21,7 @@ spec:
   ingressClassName: nginx
 
   rules:
-    # *.preview.localhost → router → sandbox Vite dev server (port 5173)
-    - host: "*.preview.localhost"
+    - host: "*.preview.brohsop.in"
       http:
         paths:
           - path: /
@@ -36,8 +32,7 @@ spec:
                 port:
                   number: 80
 
-    # *.agent.localhost → router → sandbox agent sidecar (port 3000)
-    - host: "*.agent.localhost"
+    - host: "*.agent.brohsop.in"
       http:
         paths:
           - path: /
@@ -48,19 +43,7 @@ spec:
                 port:
                   number: 80
 
-    # localhost/api/* → direct service routing
-    - host: "localhost"
-      http:
-        paths:
-          - path: /api/sandbox
-            pathType: Prefix
-            backend:
-              service:
-                name: sandbox-service
-                port:
-                  number: 80
-
-    - host: "localhost"
+    - host: "api.brohsop.in"
       http:
         paths:
           - path: /api/auth
@@ -76,5 +59,13 @@ spec:
             backend:
               service:
                 name: ai-service
+                port:
+                  number: 80
+
+          - path: /api/sandbox
+            pathType: Prefix
+            backend:
+              service:
+                name: sandbox-service
                 port:
                   number: 80

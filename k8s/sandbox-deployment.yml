@@ -21,7 +21,7 @@ spec:
       serviceAccountName: resource-manager # needs rbac.yml deployed first
       containers:
         - name: main-sandbox-container
-          image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/sandbox
+          image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/sandbox
           imagePullPolicy: IfNotPresent
 
           resources:

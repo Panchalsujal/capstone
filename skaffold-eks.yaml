@@ -14,37 +14,37 @@ build:
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/auth
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/auth
       context: auth
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/notification
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/notification
       context: notification
       docker:
         dockerfile: dockerfile
           
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/agent
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/agent
       context: sandbox/agent
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/sync-agent
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/sync-agent
       context: sandbox/sync-agent
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/sandbox
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/sandbox
       context: sandbox/server
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/router
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/router
       context: sandbox/router
       docker:
         dockerfile: dockerfile
 
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/template
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/template
       context: sandbox/template
       docker:
         dockerfile: dockerfile

@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost',
+        target: 'https://api.brohsop.in',
         changeOrigin: true,
         secure: false,
         cookieDomainRewrite: 'localhost',   // rewrite cookie domain so browser keeps it

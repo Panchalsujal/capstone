@@ -17,7 +17,7 @@ export function useAuth() {
 
     async function fetchMe() {
       try {
-        const res = await fetch('/api/auth/me', { credentials: 'include' })
+        const res = await fetch('https://api.brohsop.in/api/auth/me', { credentials: 'include' })
         const data = await res.json()
         if (!cancelled) {
           setUser(data.success ? data.user : null)

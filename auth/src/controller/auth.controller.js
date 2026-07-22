@@ -32,12 +32,12 @@ export const googleAuthController = async (req, res) => {
     // Set token in cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false,      // false for http://localhost dev environment
-      sameSite: "lax",    // "lax" works over HTTP; "none" requires HTTPS + secure:true
+      secure: true,        // must be true for sameSite:"none" (cross-origin HTTPS)
+      sameSite: "none",   // required for cross-site cookies (api.brohsop.in → brohsop.in)
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    
-    res.redirect("http://localhost:5173");
+
+    res.redirect("https://brohsop.in");
   } catch (err) {
     console.error("Error during Google authentication:", err);
     res.redirect("/");

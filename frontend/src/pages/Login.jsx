@@ -1,6 +1,6 @@
 export default function Login() {
   function handleGoogleLogin() {
-    window.location.href = '/api/auth/google'
+    window.location.href = 'https://api.brohsop.in/api/auth/google'
   }
 
   return (
