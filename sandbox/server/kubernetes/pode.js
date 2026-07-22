@@ -26,7 +26,7 @@ export async function createPode(sandboxId, projectId) {
       initContainers: [
         {
           name: "init-container",
-          image: "template:latest",
+          image: "155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/template",
           imagePullPolicy: "IfNotPresent",
           // Copies only source files — deliberately excludes node_modules.
           // node_modules live at /app/node_modules inside the template image and
@@ -50,7 +50,7 @@ export async function createPode(sandboxId, projectId) {
         {
           // Serves the Vite dev server (preview)
           name: "sandbox-container",
-          image: "template:latest",
+          image: "155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/template",
           imagePullPolicy: "IfNotPresent",
           ports: [
             {
@@ -105,7 +105,7 @@ export async function createPode(sandboxId, projectId) {
         {
           // Agent sidecar: exposes file-read/write API + Socket.IO on port 3000
           name: "agent-container",
-          image: "agent",
+          image: "155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/agent",
           imagePullPolicy: "IfNotPresent",
           ports: [
             {
@@ -137,7 +137,7 @@ export async function createPode(sandboxId, projectId) {
         },
 
         {
-          image: "sync-agent",
+          image: "155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/sync-agent",
           imagePullPolicy: "Always",
           name: "sync-agent-container",
           ports: [{ containerPort: 4000, name: "http" }],
