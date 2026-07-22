@@ -67,7 +67,7 @@ export default function ChatPanel({ sandboxId, session, onUpdateSession, onNewSe
     abortRef.current = ctrl
 
     try {
-      const res = await fetch('/api/ai/invoke', {
+      const res = await fetch('https://api.brohsop.in/api/ai/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
         body: JSON.stringify({ message: userText, sandboxId }),

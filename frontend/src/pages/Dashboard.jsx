@@ -7,8 +7,8 @@ import RightPanel from '../components/RightPanel'
 export default function Dashboard() {
   const { sandboxId } = useParams()
   const { state } = useLocation()
-  const previewUrl = state?.previewUrl || `http://${sandboxId}.preview.localhost`
-  const agentBase = `http://${sandboxId}.agent.localhost`
+  const previewUrl = state?.previewUrl || `https://${sandboxId}.preview.brohsop.in`
+  const agentBase = `https://${sandboxId}.agent.brohsop.in`
 
   // Global sessions stored in localStorage
   const storageKey = `codeforge_sessions_${sandboxId}`

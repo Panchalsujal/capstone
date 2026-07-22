@@ -100,8 +100,13 @@ export default function Dashboard() {
 
   const isBusy = ['creating', 'starting', 'provisioning'].includes(launchStatus)
 
-  function handleLogout() {
-    document.cookie = 'token=; Max-Age=0; path=/'
+  async function handleLogout() {
+    try {
+      await fetch('https://api.brohsop.in/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (_) { /* continue even if request fails */ }
     window.location.href = '/login'
   }
 
