@@ -21,6 +21,7 @@ spec:
       containers:
         - name: ai-server
           image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/ai-orchestration
+          imagePullPolicy: Always
 
           resources:
             requests:

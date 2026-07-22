@@ -276,7 +276,7 @@ async function addSlotAndWait(retries = 0) {
   const slot = {
     sandboxId,
     status: "provisioning",
-    previewUrl: `http://${sandboxId}.preview.localhost`,
+    previewUrl: `https://${sandboxId}.preview.brohsop.in`,
   };
 
   pool.push(slot);
@@ -421,7 +421,7 @@ export async function claimPod(projectId) {
   console.warn("[pool] No warm pod available — creating on-demand (slow path)");
 
   const sandboxId = uuid();
-  const previewUrl = `http://${sandboxId}.preview.localhost`;
+  const previewUrl = `https://${sandboxId}.preview.brohsop.in`;
 
   await Promise.all([createPode(sandboxId,projectId), createService(sandboxId)]);
 

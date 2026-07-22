@@ -13,7 +13,7 @@ export default function Dashboard() {
   const fetchProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
-      const res = await fetch('https://api.brohsop.in/api/sandbox/projects', { credentials: 'include' })
+      const res = await fetch('/api/sandbox/projects', { credentials: 'include' })
       const data = await res.json()
       if (data.success) setProjects(data.projects)
     } catch { /* silently ignore */ } finally {
@@ -35,7 +35,7 @@ export default function Dashboard() {
     setLaunchError('')
     try {
       const title = projectTitle.trim() || 'My Project'
-      const createRes = await fetch('https://api.brohsop.in/api/sandbox/project', {
+      const createRes = await fetch('/api/sandbox/project', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -55,7 +55,7 @@ export default function Dashboard() {
 
   async function launchSandbox(projectId) {
     setLaunchStatus('starting')
-    const startRes = await fetch('https://api.brohsop.in/api/sandbox/start', {
+    const startRes = await fetch('/api/sandbox/start', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -87,7 +87,7 @@ export default function Dashboard() {
   async function pollStatus(sandboxId, previewUrl) {
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 2000))
-      const res = await fetch(`https://api.brohsop.in/api/sandbox/status/${sandboxId}`, { credentials: 'include' })
+      const res = await fetch(`/api/sandbox/status/${sandboxId}`, { credentials: 'include' })
       const data = await res.json()
       if (data.status === 'ready') {
         navigate(`/dashboard/${sandboxId}`, { state: { previewUrl: data.previewUrl || previewUrl } })
@@ -102,7 +102,7 @@ export default function Dashboard() {
 
   async function handleLogout() {
     try {
-      await fetch('https://api.brohsop.in/api/auth/logout', {
+      await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       })

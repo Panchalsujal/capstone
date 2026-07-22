@@ -1,0 +1,46 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: sujalpanchal249@gmail.com
+
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    privateKeySecretRef:
+      name: letsencrypt-prod
+
+    solvers:
+      # ── http01: for main non-wildcard domains ──────────────────────
+      - selector:
+          dnsNames:
+            - brohsop.in
+            - www.brohsop.in
+            - api.brohsop.in
+        http01:
+          ingress:
+            ingressClassName: nginx
+
+      # ── dns01: REQUIRED for wildcard certs ─────────────────────────
+      # Covers *.preview.brohsop.in and *.agent.brohsop.in
+      # TODO: Replace hostedZoneID with your actual Route53 zone ID
+      - selector:
+          dnsNames:
+            - "*.preview.brohsop.in"
+            - "*.agent.brohsop.in"
+            - preview.brohsop.in
+            - agent.brohsop.in
+        dns01:
+          route53:
+            region: ap-south-1
+            hostedZoneID: REPLACE_WITH_YOUR_ROUTE53_ZONE_ID
+            # Option A — use IAM Role for Service Account (IRSA, recommended on EKS)
+            # role: arn:aws:iam::<ACCOUNT_ID>:role/cert-manager-route53
+            # Option B — use access key stored in a secret
+            accessKeyIDSecretRef:
+              name: route53-credentials
+              key: access-key-id
+            secretAccessKeySecretRef:
+              name: route53-credentials
+              key: secret-access-key

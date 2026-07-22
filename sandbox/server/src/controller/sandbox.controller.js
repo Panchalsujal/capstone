@@ -79,7 +79,7 @@ export async function checkSandboxStatusasync(req, res) {
       sandboxId,
       status,
       phase,
-      previewUrl: `http://${sandboxId}.preview.localhost`,
+      previewUrl: `https://${sandboxId}.preview.brohsop.in`,
       success: true,
     };
 
@@ -94,7 +94,7 @@ export async function checkSandboxStatusasync(req, res) {
         sandboxId,
         status: "provisioning",
         phase: "Pending",
-        previewUrl: `http://${sandboxId}.preview.localhost`,
+        previewUrl: `https://${sandboxId}.preview.brohsop.in`,
         success: true,
       });
     }

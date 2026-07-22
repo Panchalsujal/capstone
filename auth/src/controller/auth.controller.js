@@ -18,7 +18,7 @@ export const googleAuthController = async (req, res) => {
     }
 
     await sendAuthNotification({
-      userId: user._Id,
+      userId: user._id,
       action: "google_login",
       timestamp: new Date(),
       email: emails[0].value,
@@ -26,14 +26,15 @@ export const googleAuthController = async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign({ id: user._id }, config.JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "7d",
     });
 
     // Set token in cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,        // must be true for sameSite:"none" (cross-origin HTTPS)
-      sameSite: "none",   // required for cross-site cookies (api.brohsop.in → brohsop.in)
+      secure: true,
+      sameSite: "none",
+      domain: ".brohsop.in",   // share across all subdomains (api., www., brohsop.in)
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -72,4 +73,18 @@ export const meController = async (req, res) => {
     console.error("Error in /me:", err);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
+};
+
+/**
+ * POST /api/auth/logout
+ * Clears the httpOnly JWT cookie server-side so the browser actually drops it.
+ */
+export const logoutController = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    domain: ".brohsop.in",
+  });
+  return res.status(200).json({ success: true, message: "Logged out" });
 };

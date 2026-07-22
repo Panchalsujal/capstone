@@ -9,7 +9,7 @@ build:
     - linux/amd64
   
   artifacts:
-    - image: 155149245210.dkr.ecr.ap-southeast-1.amazonaws.com/ai-orchestration
+    - image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/ai-orchestration
       context: ai-orchestration
       docker:
         dockerfile: dockerfile

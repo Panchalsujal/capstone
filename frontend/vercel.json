@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.brohsop.in/api/:path*"
+    }
+  ]
+}

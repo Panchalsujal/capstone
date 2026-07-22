@@ -22,7 +22,7 @@ spec:
       containers:
         - name: main-sandbox-container
           image: 155149245210.dkr.ecr.ap-south-1.amazonaws.com/sandbox
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
 
           resources:
             limits:

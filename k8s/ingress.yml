@@ -1,69 +1,199 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
+
 metadata:
   name: codespace-ingress
+
   labels:
     app.kubernetes.io/name: codespace-ingress
+
   annotations:
+    # ============================================
+    # HTTPS / SSL
+    # ============================================
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # ============================================
+    # Long-running connections
+    # AI streaming / WebSocket / Sandbox
+    # ============================================
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+    # ============================================
+    # WebSocket support
+    # ============================================
     nginx.ingress.kubernetes.io/enable-websockets: "true"
+
+    # ============================================
+    # Sticky sessions
+    # Important for sandbox agents
+    # ============================================
     nginx.ingress.kubernetes.io/affinity: "cookie"
     nginx.ingress.kubernetes.io/session-cookie-name: "route"
+
+    # ============================================
+    # Upload / request body size
+    # ============================================
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+
+    # ============================================
+    # CORS
+    # Frontend is on Vercel (brohsop.in / www.brohsop.in)
+    # Allow both www and non-www so cookies/API calls work
+    # ============================================
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://brohsop.in"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://brohsop.in,https://www.brohsop.in"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "*"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type,Authorization,Cookie"
     nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+
 
 spec:
   ingressClassName: nginx
 
+  # ============================================
+  # SSL Certificates
+  # NOTE: brohsop.in / www.brohsop.in are served by Vercel — NOT in EKS ingress TLS.
+  # EKS only handles: api, preview subdomains, agent subdomains.
+  # ============================================
+  tls:
+  # API — http01 solver (non-wildcard)
+  - hosts:
+      - api.brohsop.in
+    secretName: brohsop-api-tls
+
+  # Preview wildcard — requires dns01 solver (see letsencrypt-issuer.yml)
+  - hosts:
+      - preview.brohsop.in
+      - "*.preview.brohsop.in"
+    secretName: brohsop-preview-tls
+
+  # Agent wildcard — requires dns01 solver (see letsencrypt-issuer.yml)
+  - hosts:
+      - agent.brohsop.in
+      - "*.agent.brohsop.in"
+    secretName: brohsop-agent-tls
+
+
   rules:
-    - host: "*.preview.brohsop.in"
+
+    # ============================================
+    # PREVIEW ENVIRONMENT
+    # https://preview.brohsop.in  (base, for health checks)
+    # ============================================
+
+    - host: preview.brohsop.in
       http:
         paths:
           - path: /
             pathType: Prefix
+
             backend:
               service:
                 name: router-service
                 port:
                   number: 80
+
+
+    # ============================================
+    # PREVIEW WILDCARD
+    # https://<sandboxId>.preview.brohsop.in
+    # ============================================
+
+    - host: "*.preview.brohsop.in"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+
+            backend:
+              service:
+                name: router-service
+                port:
+                  number: 80
+
+
+    # ============================================
+    # AGENT ENVIRONMENT
+    # https://agent.brohsop.in  (base, for health checks)
+    # ============================================
+
+    - host: agent.brohsop.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+
+            backend:
+              service:
+                name: router-service
+                port:
+                  number: 80
+
+
+    # ============================================
+    # AGENT WILDCARD
+    # https://<sandboxId>.agent.brohsop.in
+    # ============================================
 
     - host: "*.agent.brohsop.in"
       http:
         paths:
           - path: /
             pathType: Prefix
+
             backend:
               service:
                 name: router-service
                 port:
                   number: 80
 
-    - host: "api.brohsop.in"
+
+    # ============================================
+    # BACKEND API
+    # https://api.brohsop.in
+    # ============================================
+
+    - host: api.brohsop.in
       http:
         paths:
+
+          # ----------------------------------------
+          # Authentication Service
+          # ----------------------------------------
           - path: /api/auth
             pathType: Prefix
+
             backend:
               service:
                 name: auth-service
                 port:
                   number: 80
 
+
+          # ----------------------------------------
+          # AI Service
+          # ----------------------------------------
           - path: /api/ai
             pathType: Prefix
+
             backend:
               service:
                 name: ai-service
                 port:
                   number: 80
 
+
+          # ----------------------------------------
+          # Sandbox Service
+          # ----------------------------------------
           - path: /api/sandbox
             pathType: Prefix
+
             backend:
               service:
                 name: sandbox-service

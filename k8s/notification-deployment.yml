@@ -66,6 +66,12 @@ spec:
               secretKeyRef:
                 name: database
                 key: RABBITMQ_URL
+
+          - name: RABBITMQ_PORT
+            valueFrom:
+              secretKeyRef:
+                name: database
+                key: RABBITMQ_PORT
         ports:
         - containerPort: 4000
           name: my-name
